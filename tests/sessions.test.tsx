@@ -246,4 +246,3 @@ test('Windows paths: backslashes in a written path or a command still name the p
   expect(packageFromPath('C:\\dev\\acme\\docs\\packages\\checkout-redesign\\progress.json', SEG)).toBe('checkout-redesign')
   expect(candidatePackages('type C:\\dev\\acme\\docs\\packages\\search-index\\progress.json', SEG)).toEqual(['search-index'])
 })
-

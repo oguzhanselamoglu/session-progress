@@ -131,4 +131,3 @@ test('Windows git files: a gitdir with backslashes gives forward-slash roots', (
   expect(mainRootFromGitFile('C:/wt/feature-x', 'gitdir: C:\\dev\\acme\\.git\\worktrees\\feature-x\n')).toBe('C:/dev/acme')
   expect(worktreeRootFromGitdir('C:\\wt\\feature-x\\.git\n')).toBe('C:/wt/feature-x')
 })
-
