@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13">
+<title>session-progress: the band above the prompt and the sessions panel</title>
+<rect width="1440" height="900" rx="12" fill="#151515"/>
+<path d="M0 12 a12 12 0 0 1 12 -12 h1416 a12 12 0 0 1 12 12 v22 h-1440 z" fill="#232323"/>
+<circle cx="20" cy="17" r="6" fill="#ff5f57"/><circle cx="40" cy="17" r="6" fill="#febc2e"/><circle cx="60" cy="17" r="6" fill="#28c840"/>
+<text x="720.0" y="22" text-anchor="middle" fill="#8b8b8b" font-size="12">Claude Code — acme-shop</text>
+<text x="28" y="70" xml:space="preserve"><tspan fill="#8b8b8b">&gt; </tspan><tspan fill="#e8e6e3">Add a coupon field to checkout, with server-side validation</tspan></text>
+<text x="28" y="114" xml:space="preserve"><tspan fill="#e8e6e3">⏺ </tspan><tspan fill="#e8e6e3">I'll plan this first and track it as a work package.</tspan></text>
+<text x="28" y="158" xml:space="preserve"><tspan fill="#4eba65">⏺ </tspan><tspan fill="#e8e6e3" font-weight="700">Write</tspan><tspan fill="#8b8b8b">(.claude/progress/checkout-redesign/progress.json)</tspan></text>
+<text x="28" y="180" xml:space="preserve"><tspan fill="#8b8b8b">  ⎿  </tspan><tspan fill="#8b8b8b">Wrote 6 phases: Explore, Plan, Plan approval, Build, Review, Ship</tspan></text>
+<text x="28" y="224" xml:space="preserve"><tspan fill="#e8e6e3">⏺ </tspan><tspan fill="#e8e6e3">Explored the checkout module (14 files) and wrote the plan:</tspan></text>
+<text x="28" y="246" xml:space="preserve"><tspan fill="#8b8b8b">    1. </tspan><tspan fill="#e8e6e3">CouponField component + form wiring</tspan></text>
+<text x="28" y="268" xml:space="preserve"><tspan fill="#8b8b8b">    2. </tspan><tspan fill="#e8e6e3">POST /api/coupons/validate with rate limiting</tspan></text>
+<text x="28" y="290" xml:space="preserve"><tspan fill="#8b8b8b">    3. </tspan><tspan fill="#e8e6e3">Totals recalculated on apply / remove</tspan></text>
+<text x="28" y="312" xml:space="preserve"><tspan fill="#8b8b8b">    4. </tspan><tspan fill="#e8e6e3">Unit + e2e tests</tspan></text>
+<text x="28" y="356" xml:space="preserve"><tspan fill="#e8e6e3">⏺ </tspan><tspan fill="#e8e6e3">The plan is ready. Waiting for your approval before I start building.</tspan></text>
+<text x="36" y="750" xml:space="preserve"><tspan fill="#d97757" font-weight="700">▶ Checkout redesign  </tspan><tspan fill="#4eba65">████░░░░░░░░</tspan><tspan fill="#e8e6e3">  2/6  33%</tspan></text>
+<text x="36" y="769" xml:space="preserve"><tspan fill="#8b8b8b">  Now: Plan approval</tspan><tspan fill="#e5b94a" font-weight="700">  ·  ⏸ WAITING ON YOU</tspan><tspan fill="#8b8b8b">  ·  25m</tspan><tspan fill="#e5b94a">  ·  +1 waiting on you in other sessions (/sessions)</tspan></text>
+<rect x="24" y="786" width="792" height="44" rx="8" fill="none" stroke="#2e2e2e" stroke-width="1.4"/>
+<text x="40" y="813" xml:space="preserve"><tspan fill="#8b8b8b">&gt; </tspan><tspan fill="#e8e6e3">Approved — go ahead</tspan></text>
+<rect x="210" y="800" width="8" height="17" fill="#e8e6e3" opacity="0.7"/>
+<text x="28" y="878" xml:space="preserve"><tspan fill="#8b8b8b">? for shortcuts</tspan></text>
+<rect x="840" y="34" width="600" height="866" fill="#1b1b1b"/>
+<line x1="840" y1="34" x2="840" y2="900" stroke="#2e2e2e"/>
+<text x="860" y="60" xml:space="preserve"><tspan fill="#e8e6e3" font-weight="700">Sessions</tspan></text>
+<line x1="840" y1="72" x2="1440" y2="72" stroke="#2e2e2e"/>
+<text x="860" y="98" xml:space="preserve"><tspan fill="#e8e6e3" font-weight="700">Open sessions · 4</tspan><tspan fill="#e5b94a" font-weight="700">   ⏸ 2 waiting on you</tspan></text>
+<rect x="860" y="112" width="560" height="132" rx="9" fill="none" stroke="#e5b94a" stroke-width="1.3"/>
+<text x="874" y="136" xml:space="preserve"><tspan fill="#e5b94a" font-weight="700">⏸ WAITING ON YOU</tspan><tspan fill="#8b8b8b">  ·  just now</tspan></text>
+<text x="874" y="155" xml:space="preserve"><tspan fill="#d97757" font-weight="700">Checkout redesign</tspan></text>
+<text x="874" y="174" xml:space="preserve"><tspan fill="#4eba65">████░░░░░░░░</tspan><tspan fill="#8b8b8b">  2/6 · 33%</tspan></text>
+<text x="874" y="193" xml:space="preserve" letter-spacing="3"><tspan fill="#4eba65">✓</tspan><tspan fill="#4eba65">✓</tspan><tspan fill="#e5b94a">⏸</tspan><tspan fill="#6e6e6e">○</tspan><tspan fill="#6e6e6e">○</tspan><tspan fill="#6e6e6e">○</tspan></text>
+<text x="874" y="212" xml:space="preserve"><tspan fill="#e5b94a">Waiting: Approve the plan</tspan></text>
+<text x="874" y="231" xml:space="preserve"><tspan fill="#8b8b8b">checkout work (this)  ·  acme-shop</tspan></text>
+<rect x="860" y="254" width="560" height="132" rx="9" fill="none" stroke="#e5b94a" stroke-width="1.3"/>
+<text x="874" y="278" xml:space="preserve"><tspan fill="#e5b94a" font-weight="700">⏸ WAITING ON YOU</tspan><tspan fill="#8b8b8b">  ·  3m ago</tspan></text>
+<text x="874" y="297" xml:space="preserve"><tspan fill="#d97757" font-weight="700">Payments webhook</tspan></text>
+<text x="874" y="316" xml:space="preserve"><tspan fill="#4eba65">█████░░░░░░░</tspan><tspan fill="#8b8b8b">  2/5 · 40%</tspan></text>
+<text x="874" y="335" xml:space="preserve" letter-spacing="3"><tspan fill="#4eba65">✓</tspan><tspan fill="#4eba65">✓</tspan><tspan fill="#e5b94a">⏸</tspan><tspan fill="#6e6e6e">○</tspan><tspan fill="#6e6e6e">○</tspan></text>
+<text x="874" y="354" xml:space="preserve"><tspan fill="#e5b94a">Waiting: Choose a retry policy</tspan></text>
+<text x="874" y="373" xml:space="preserve"><tspan fill="#8b8b8b">webhooks  ·  acme-shop-webhooks</tspan></text>
+<rect x="860" y="396" width="560" height="151" rx="9" fill="none" stroke="#d97757" stroke-width="1.3"/>
+<text x="874" y="420" xml:space="preserve"><tspan fill="#d97757" font-weight="700">● working</tspan><tspan fill="#8b8b8b">  ·  just now</tspan></text>
+<text x="874" y="439" xml:space="preserve"><tspan fill="#d97757" font-weight="700">Search index rebuild</tspan></text>
+<text x="874" y="458" xml:space="preserve"><tspan fill="#4eba65">███████░░░░░</tspan><tspan fill="#8b8b8b">  3/5 · 60%</tspan></text>
+<text x="874" y="477" xml:space="preserve" letter-spacing="3"><tspan fill="#4eba65">✓</tspan><tspan fill="#4eba65">✓</tspan><tspan fill="#4eba65">✓</tspan><tspan fill="#d97757">●</tspan><tspan fill="#6e6e6e">○</tspan></text>
+<text x="874" y="496" xml:space="preserve"><tspan fill="#e8e6e3">Now: Backfill</tspan><tspan fill="#8b8b8b">  ·  claude</tspan></text>
+<text x="874" y="515" xml:space="preserve"><tspan fill="#8b8b8b">Next: Review</tspan></text>
+<text x="874" y="534" xml:space="preserve"><tspan fill="#8b8b8b">search  ·  acme-shop-search</tspan></text>
+<rect x="860" y="557" width="560" height="132" rx="9" fill="none" stroke="#2e2e2e" stroke-width="1.3"/>
+<text x="874" y="581" xml:space="preserve"><tspan fill="#8b8b8b">○ idle</tspan><tspan fill="#8b8b8b">  ·  4m ago</tspan></text>
+<text x="874" y="600" xml:space="preserve"><tspan fill="#d97757" font-weight="700">API v2 migration</tspan></text>
+<text x="874" y="619" xml:space="preserve"><tspan fill="#4eba65">████████████</tspan><tspan fill="#8b8b8b">  7/7 · 100%</tspan></text>
+<text x="874" y="638" xml:space="preserve" letter-spacing="3"><tspan fill="#4eba65">✓</tspan><tspan fill="#4eba65">✓</tspan><tspan fill="#4eba65">✓</tspan><tspan fill="#4eba65">✓</tspan><tspan fill="#4eba65">✓</tspan><tspan fill="#4eba65">✓</tspan><tspan fill="#4eba65">✓</tspan></text>
+<text x="874" y="657" xml:space="preserve"><tspan fill="#4eba65">✓ completed</tspan></text>
+<text x="874" y="676" xml:space="preserve"><tspan fill="#8b8b8b">session 9f2c1a  ·  acme-api</tspan></text>
+<text x="860" y="715" xml:space="preserve"><tspan fill="#e8e6e3" font-weight="700">Unowned packages · 1</tspan><tspan fill="#8b8b8b">  (not bound to an open session)</tspan></text>
+<text x="876" y="740" xml:space="preserve"><tspan fill="#e8e6e3">Dark mode</tspan></text>
+<text x="876" y="759" xml:space="preserve"><tspan fill="#4eba65">██████░░</tspan><tspan fill="#8b8b8b">  5/7 · 71%</tspan></text>
+<text x="876" y="778" xml:space="preserve"><tspan fill="#8b8b8b">Review  ·  2h ago</tspan></text>
+<text x="860" y="809" xml:space="preserve"><tspan fill="#8b8b8b">2 closed sessions hidden  ·  Read Oct 10 10:42</tspan></text>
+<text x="860" y="828" xml:space="preserve"><tspan fill="#8b8b8b">/progress bind &lt;package&gt;  ·  /progress name &lt;name&gt;</tspan></text>
+<text x="36" y="720" text-anchor="start" fill="#9fb8d9" font-size="12" font-style="italic">↳ the band: this session's package</text>
+<text x="860" y="882" text-anchor="start" fill="#9fb8d9" font-size="12" font-style="italic">↳ /sessions — every open session, decisions waiting on you first</text>
+</svg>

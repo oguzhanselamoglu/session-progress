@@ -2,6 +2,10 @@
 
 A Claude Code plugin that shows how your work is going, **per session**:
 
+<p align="center">
+  <img src="docs/images/overview.svg" alt="A Claude Code window: the band above the prompt shows this session's package waiting on you; the Sessions panel on the right lists four open sessions as cards, the two waiting on you first." width="100%">
+</p>
+
 - **Band above the prompt:** the work package this session is on. It shows a bar, the current phase, and who the work is waiting on.
   When a decision is waiting on you it turns amber.
 - **`/sessions` panel:** every open Claude Code session as a card, sessions waiting on you first. Each card shows the package, progress,
@@ -12,6 +16,22 @@ A Claude Code plugin that shows how your work is going, **per session**:
 - **Notifications:** a toast when a phase of your package finishes or a decision moves to you.
 
 It is built for running several sessions at once (worktrees, parallel features, agents) and seeing at a glance which one needs you.
+
+<p align="center">
+  <img src="docs/images/progress-panel.svg" alt="The /progress panel: a package with its bar, the decision waiting on you, every phase with owner and duration, review rounds, other active packages and completed ones." width="620">
+</p>
+
+### A typical flow
+
+1. You ask for a multi-step change. Claude writes `.claude/progress/<package>/progress.json` with its plan as phases; the band appears
+   above the prompt for that session.
+2. Claude moves through the phases and updates the file; the bar and the current phase follow.
+3. When Claude needs your decision it marks the phase `waiting-user`: the band turns amber, a toast says what is waiting, and the
+   session moves to the top of `/sessions` in every other session too.
+4. With several sessions open (one per worktree, say), `/sessions` shows which one is working, which one waits on you, and which is
+   done.
+
+All names in these pictures are invented examples.
 
 ## Install
 
@@ -113,7 +133,8 @@ The pure core has no access to the engine and is unit-tested directly:
 - `hooks/sessions.ts`: session records, binding, ordering.
 - `hooks/i18n.ts`: every text, in both languages.
 
-The hooks live in `hooks/register.tsx`.
+The hooks live in `hooks/register.tsx`. The README pictures are drawn from invented data by
+`python3 scripts/make-readme-images.py`; run it again after a visible change.
 
 ## Türkçe
 
@@ -122,6 +143,10 @@ The hooks live in `hooks/register.tsx`.
 - **Prompt üstü şerit:** bu oturumun paketi.
 - **`/oturumlar` paneli:** tüm açık oturumlar ayrı kartlarda, sende bekleyenler önce.
 - **`/ilerleme` paneli:** paketin ayrıntısı.
+
+<p align="center">
+  <img src="docs/images/sessions-tr.svg" alt="/oturumlar paneli Türkçe: dört açık oturum kart olarak, sende bekleyenler önce." width="480">
+</p>
 
 Varsayılan dil İngilizcedir. Türkçeye geçmek için `/progress language tr` yazman yeterli; seçimin sonraki tüm oturumlarında
 geçerli olur. Komutlar `/ilerleme` ve `/oturumlar` olur; İngilizceye dönmek için `/ilerleme dil en`.
