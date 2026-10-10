@@ -68,6 +68,23 @@ never tracked. The sessions panel is built from these records. A record is refre
 every 30 s. A session silent for 3 minutes, or one that ended, counts as closed. Records are only written in repositories that have a
 packages folder, so other projects stay untouched.
 
+### What it reads and writes
+
+Everything stays on your machine: the plugin makes no network requests and reads no credentials.
+
+| | Path | Why |
+|---|---|---|
+| reads | `<packagesDir>/*/progress.json` in the main checkout and every worktree | the packages it shows |
+| reads | `.claude/session-progress.json` | the project's settings |
+| reads | `.git` (file or folder) and `.git/worktrees/*/gitdir` | to find the main checkout and its worktrees |
+| writes | `.git/session-progress/sessions/<session id>.json` | one small record per session: name, checkout, bound package, last signal. Git ignores unknown folders inside `.git`; nothing is committed. Written only in repositories that have a packages folder. |
+| writes | `<packagesDir>/README.md` | only when you run `/progress init`, and never over an existing folder |
+
+Hooks: `tool.call` on Write, Edit, NotebookEdit and Bash only **watches** whether a call wrote a package's `progress.json`, to bind
+the session; it never changes, delays or blocks a call. `session.start`, `session.end`, `turn.start` and `turn.complete` keep the
+session record current. `ui.render` draws the band and the two panels. The plugin registers two commands (`/progress`, `/sessions`;
+in Turkish `/ilerleme`, `/oturumlar`) and keeps your language choice in its own store.
+
 ### `progress.json`
 
 ```json

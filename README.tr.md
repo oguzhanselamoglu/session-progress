@@ -75,6 +75,23 @@ git onu izlemez. Oturumlar paneli bu kayıtlardan kurulur. Kayıt oturum başın
 tazelenir. 3 dakikadır ses vermeyen ya da kapanmış oturum kapalı sayılır. Kayıtlar yalnızca paket klasörü olan depolarda yazılır; başka
 projelere dokunulmaz.
 
+### Neyi okur, neyi yazar
+
+Her şey senin makinende kalır: eklenti ağ isteği yapmaz ve hiçbir kimlik bilgisini okumaz.
+
+| | Yol | Neden |
+|---|---|---|
+| okur | ana checkout'ta ve her worktree'de `<packagesDir>/*/progress.json` | gösterdiği paketler |
+| okur | `.claude/session-progress.json` | projenin ayarları |
+| okur | `.git` (dosya ya da klasör) ve `.git/worktrees/*/gitdir` | ana checkout'u ve worktree'lerini bulmak için |
+| yazar | `.git/session-progress/sessions/<oturum kimliği>.json` | oturum başına küçük bir kayıt: ad, checkout, bağlı paket, son sinyal. Git, `.git` içindeki tanımadığı klasörleri yok sayar; hiçbir şey commit'lenmez. Yalnız paket klasörü olan depolarda yazılır. |
+| yazar | `<packagesDir>/README.md` | yalnız `/ilerleme kur` çalıştırınca ve mevcut bir klasörün üzerine asla |
+
+Kancalar: Write, Edit, NotebookEdit ve Bash üzerindeki `tool.call` yalnız bir çağrının paketin `progress.json`'unu yazıp yazmadığını
+**izler** (oturumu bağlamak için); hiçbir çağrıyı değiştirmez, geciktirmez ya da engellemez. `session.start`, `session.end`,
+`turn.start` ve `turn.complete` oturum kaydını güncel tutar. `ui.render` şeridi ve iki paneli çizer. Eklenti iki komut kaydeder
+(`/ilerleme`, `/oturumlar`; İngilizcede `/progress`, `/sessions`) ve dil seçimini kendi deposunda tutar.
+
 ### `progress.json`
 
 ```json

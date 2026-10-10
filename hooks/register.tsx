@@ -469,7 +469,7 @@ async function runProgress($: Env, args: string): Promise<{ text: string }> {
 const PACKAGES_README = `# Work packages
 
 One folder per piece of multi-step work, each holding a \`progress.json\` with its phases. Claude writes them as the work moves;
-the [session-progress](https://github.com/oguzhanselamoglu/session-progress) plugin shows them above the prompt and in its panels.
+the session-progress plugin for Claude Code shows them above the prompt and in its panels.
 Commit this folder with the project.
 `
 

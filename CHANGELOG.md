@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 — 2026-10-10
+
+- Directory listing: icon (`.claude-plugin/icon.png`), README section on what the plugin reads and writes and what its hooks do.
+- The README that `/progress init` writes no longer carries a link.
+
 ## 0.3.0 — 2026-10-10
 
 - **Default packages folder is now `.progress`** (was `.claude/progress`): Claude Code treats `.claude/` as a protected path, so
