@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 — 2026-10-10
+
+- The skill defers to a project's own documented conventions for `progress.json` (writer, schema value, owner names).
+
 ## 0.2.0 — 2026-10-10
 
 First public release.

@@ -8,6 +8,12 @@ description: Keep a work package's progress.json current so the session-progress
 The session-progress plugin shows the progress of **work packages** above the prompt (only the package this session works on), in a
 progress panel, and in a sessions panel listing every open session. It reads one file per package; this skill is how you write it.
 
+## The project's own rules come first
+
+If the project documents its own conventions for these files (its `CLAUDE.md`, a README in the packages folder, an
+agent guide): who writes them, the `schema` value, owner names, when to update — follow those. This skill fills in only what the
+project leaves unsaid.
+
 ## Where the file lives
 
 1. Read `.claude/session-progress.json` at the repository root if it exists. Its `packagesDir` names the packages folder
