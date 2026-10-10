@@ -165,114 +165,176 @@ def sessions_texts(lang):
     }
 
 
-def overview():
+OVERVIEW = {
+    "en": {
+        "title": "Claude Code — acme-shop",
+        "transcript": [
+            [span("> ", "dim"), span("Add a coupon field to checkout, with server-side validation")],
+            [],
+            [span("⏺ ", "text"), span("I'll plan this first and track it as a work package.")],
+            [],
+            [span("⏺ ", "success"), span("Write", bold=True), span("(.claude/progress/checkout-redesign/progress.json)", "dim")],
+            [span("  ⎿  ", "dim"), span("Wrote 6 phases: Explore, Plan, Plan approval, Build, Review, Ship", "dim")],
+            [],
+            [span("⏺ ", "text"), span("Explored the checkout module (14 files) and wrote the plan:")],
+            [span("    1. ", "dim"), span("CouponField component + form wiring")],
+            [span("    2. ", "dim"), span("POST /api/coupons/validate with rate limiting")],
+            [span("    3. ", "dim"), span("Totals recalculated on apply / remove")],
+            [span("    4. ", "dim"), span("Unit + e2e tests")],
+            [],
+            [span("⏺ ", "text"), span("The plan is ready. Waiting for your approval before I start building.")],
+        ],
+        "band1": [span("▶ Checkout redesign  ", "claude", True), span(bar(33, 12), "success"), span("  2/6  33%")],
+        "band2": [span("  Now: Plan approval", "dim"), span("  ·  ⏸ WAITING ON YOU", "warning", True), span("  ·  25m", "dim"),
+                  span("  ·  +1 waiting on you in other sessions (/sessions)", "warning")],
+        "prompt": "Approved — go ahead",
+        "shortcuts": "? for shortcuts",
+        "pane": "Sessions",
+        "callout_band": "the band: this session's package",
+        "callout_pane": "/sessions — every open session, decisions waiting on you first",
+        "alt": "session-progress: the band above the prompt and the sessions panel",
+    },
+    "tr": {
+        "title": "Claude Code — acme-shop",
+        "transcript": [
+            [span("> ", "dim"), span("Ödeme sayfasına kupon alanı ekle, doğrulaması sunucuda olsun")],
+            [],
+            [span("⏺ ", "text"), span("Önce planlayıp bunu bir iş paketi olarak izleyeceğim.")],
+            [],
+            [span("⏺ ", "success"), span("Write", bold=True), span("(.claude/progress/checkout-redesign/progress.json)", "dim")],
+            [span("  ⎿  ", "dim"), span("6 aşama yazıldı: Keşif, Plan, Plan onayı, Geliştirme, İnceleme, Yayın", "dim")],
+            [],
+            [span("⏺ ", "text"), span("Ödeme modülünü inceledim (14 dosya) ve planı yazdım:")],
+            [span("    1. ", "dim"), span("CouponField bileşeni + forma bağlama")],
+            [span("    2. ", "dim"), span("Hız sınırlı POST /api/coupons/validate")],
+            [span("    3. ", "dim"), span("Uygula / kaldır sonrası toplamların yeniden hesabı")],
+            [span("    4. ", "dim"), span("Birim + e2e testleri")],
+            [],
+            [span("⏺ ", "text"), span("Plan hazır. Geliştirmeye başlamadan önce onayını bekliyorum.")],
+        ],
+        "band1": [span("▶ Ödeme sayfası yenileme  ", "claude", True), span(bar(33, 12), "success"), span("  2/6  %33")],
+        "band2": [span("  Şu an: Plan onayı", "dim"), span("  ·  ⏸ SENDE BEKLİYOR", "warning", True), span("  ·  25dk", "dim"),
+                  span("  ·  +1 iş başka oturumda sende bekliyor (/oturumlar)", "warning")],
+        "prompt": "Onaylandı — devam et",
+        "shortcuts": "? kısayollar",
+        "pane": "Oturumlar",
+        "callout_band": "şerit: bu oturumun paketi",
+        "callout_pane": "/oturumlar — açık oturumların hepsi, sende bekleyen kararlar önce",
+        "alt": "session-progress: prompt üstündeki şerit ve oturumlar paneli",
+    },
+}
+
+
+def overview(lang):
+    o = OVERVIEW[lang]
     W, H = 1440, 900
     left_w = 840
-    body = window(W, H, "Claude Code — acme-shop")
+    body = window(W, H, o["title"])
     # transcript (left)
     y = 70
-    transcript = [
-        [span("> ", "dim"), span("Add a coupon field to checkout, with server-side validation")],
-        [],
-        [span("⏺ ", "text"), span("I'll plan this first and track it as a work package.")],
-        [],
-        [span("⏺ ", "success"), span("Write", bold=True), span("(.claude/progress/checkout-redesign/progress.json)", "dim")],
-        [span("  ⎿  ", "dim"), span("Wrote 6 phases: Explore, Plan, Plan approval, Build, Review, Ship", "dim")],
-        [],
-        [span("⏺ ", "text"), span("Explored the checkout module (14 files) and wrote the plan:")],
-        [span("    1. ", "dim"), span("CouponField component + form wiring")],
-        [span("    2. ", "dim"), span("POST /api/coupons/validate with rate limiting")],
-        [span("    3. ", "dim"), span("Totals recalculated on apply / remove")],
-        [span("    4. ", "dim"), span("Unit + e2e tests")],
-        [],
-        [span("⏺ ", "text"), span("The plan is ready. Waiting for your approval before I start building.")],
-    ]
-    for spans in transcript:
+    for spans in o["transcript"]:
         if spans:
             body.append(text_line(28, y, spans))
         y += LH + 3
     # band above the prompt
     by = H - 150
-    body.append(text_line(36, by, [span("▶ Checkout redesign  ", "claude", True), span(bar(33, 12), "success"), span("  2/6  33%")]))
-    body.append(text_line(36, by + LH, [
-        span("  Now: Plan approval", "dim"), span("  ·  ⏸ WAITING ON YOU", "warning", True), span("  ·  25m", "dim"),
-        span("  ·  +1 waiting on you in other sessions (/sessions)", "warning"),
-    ]))
+    body.append(text_line(36, by, o["band1"]))
+    body.append(text_line(36, by + LH, o["band2"]))
     # prompt box
     body.append(f'<rect x="24" y="{by + 36}" width="{left_w - 48}" height="44" rx="8" fill="none" stroke="{C["rule"]}" stroke-width="1.4"/>')
-    body.append(text_line(40, by + 63, [span("> ", "dim"), span("Approved — go ahead", "text")]))
-    body.append(f'<rect x="{40 + CW * 21.6:.0f}" y="{by + 50}" width="8" height="17" fill="{C["text"]}" opacity="0.7"/>')
-    body.append(text_line(28, H - 22, [span("? for shortcuts", "dim")]))
+    body.append(text_line(40, by + 63, [span("> ", "dim"), span(o["prompt"], "text")]))
+    body.append(f'<rect x="{40 + CW * (len(o["prompt"]) + 2.6):.0f}" y="{by + 50}" width="8" height="17" fill="{C["text"]}" opacity="0.7"/>')
+    body.append(text_line(28, H - 22, [span(o["shortcuts"], "dim")]))
     # sessions pane (right)
     px = left_w
     body.append(f'<rect x="{px}" y="34" width="{W - px}" height="{H - 34}" fill="{C["pane"]}"/>')
     body.append(f'<line x1="{px}" y1="34" x2="{px}" y2="{H}" stroke="{C["rule"]}"/>')
-    body.append(text_line(px + 20, 60, [span("Sessions", "text", True)]))
+    body.append(text_line(px + 20, 60, [span(o["pane"], "text", True)]))
     body.append(f'<line x1="{px}" y1="72" x2="{W}" y2="72" stroke="{C["rule"]}"/>')
-    parts, _ = session_cards(sessions_texts("en"), px + 20, 98, W - px - 40)
+    parts, _ = session_cards(sessions_texts(lang), px + 20, 98, W - px - 40)
     body += parts
     # callouts
-    body.append(callout(36, by - 30, "the band: this session's package"))
-    body.append(callout(px + 20, H - 18, "/sessions — every open session, decisions waiting on you first", anchor="start"))
-    return svg(W, H, body, "session-progress: the band above the prompt and the sessions panel")
+    body.append(callout(36, by - 30, o["callout_band"]))
+    body.append(callout(px + 20, H - 18, o["callout_pane"]))
+    return svg(W, H, body, o["alt"])
 
 
 def callout(x, y, label, anchor="start"):
     return f'<text x="{x}" y="{y}" text-anchor="{anchor}" fill="{C["user"]}" font-size="12" font-style="italic">↳ {escape(label)}</text>'
 
 
-def sessions_tr():
-    W = 600
-    body = []
-    parts, bottom = session_cards(sessions_texts("tr"), 20, 74, W - 40)
-    H = int(bottom + 10)
-    body = window(W, H, "Oturumlar")
-    body += parts
-    return svg(W, H, body, "session-progress: /oturumlar paneli (Türkçe)")
-
-
-def progress_panel():
-    W = 760
-    rows = [
-        [span("Checkout redesign  (feature/checkout-redesign)", "claude", True)],
-        [span(bar(33, 24), "success"), span("  2/6 phases  33%  ·  1h 05m")],
-        [span("⏸ Waiting on you: Approve the plan", "warning", True)],
+def progress_rows(lang):
+    if lang == "en":
+        return [
+            [span("Checkout redesign  (feature/checkout-redesign)", "claude", True)],
+            [span(bar(33, 24), "success"), span("  2/6 phases  33%  ·  1h 05m")],
+            [span("⏸ Waiting on you: Approve the plan", "warning", True)],
+            [],
+            [span("✓ ", "success", True), span("Explore", "dim"), span("  claude · 18m · 14 files read", "dim")],
+            [span("✓ ", "success", True), span("Plan", "dim"), span("  claude · 22m · docs/plans/checkout-coupons.md", "dim")],
+            [span("⏸ ", "warning", True), span("Plan approval", bold=True), span("  YOU · 25m", "dim")],
+            [span("○ ", "inactive", True), span("Build"), span("  claude", "dim")],
+            [span("○ ", "inactive", True), span("Review"), span("  reviewer", "dim")],
+            [span("○ ", "inactive", True), span("Ship"), span("  claude", "dim")],
+            [],
+            [span("Review rounds", bold=True)],
+            [span("● ", "warning"), span("round 1 · reviewer · CONCERNS · 3 notes → plan v2"), span("  Oct 10 09:58", "dim")],
+            [span("● ", "success"), span("round 2 · reviewer · PASS"), span("  Oct 10 10:21", "dim")],
+            [],
+            [span("Other active packages", bold=True)],
+            [span("● Search index rebuild  ", "claude"), span(bar(60, 8), "success"), span("  3/5 · Backfill · claude · just now", "dim")],
+            [span("● Payments webhook  ", "claude"), span(bar(40, 8), "success"), span("  2/5 · Choose a retry policy · YOU · 3m ago", "dim")],
+            [],
+            [span("Completed", bold=True)],
+            [span("✓ ", "success"), span("API v2 migration  ·  Oct 9 17:20  ·  1d 4h", "dim")],
+            [],
+            [span("Read Oct 10 10:42  ·  /progress refresh  ·  /sessions", "dim")],
+        ]
+    return [
+        [span("Ödeme sayfası yenileme  (feature/checkout-redesign)", "claude", True)],
+        [span(bar(33, 24), "success"), span("  2/6 aşama  %33  ·  1sa 05dk")],
+        [span("⏸ Sende bekliyor: Planı onayla", "warning", True)],
         [],
-        [span("✓ ", "success", True), span("Explore", "dim"), span("  claude · 18m · 14 files read", "dim")],
-        [span("✓ ", "success", True), span("Plan", "dim"), span("  claude · 22m · docs/plans/checkout-coupons.md", "dim")],
-        [span("⏸ ", "warning", True), span("Plan approval", bold=True), span("  YOU · 25m", "dim")],
-        [span("○ ", "inactive", True), span("Build"), span("  claude", "dim")],
-        [span("○ ", "inactive", True), span("Review"), span("  reviewer", "dim")],
-        [span("○ ", "inactive", True), span("Ship"), span("  claude", "dim")],
+        [span("✓ ", "success", True), span("Keşif", "dim"), span("  claude · 18dk · 14 dosya okundu", "dim")],
+        [span("✓ ", "success", True), span("Plan", "dim"), span("  claude · 22dk · docs/plans/checkout-coupons.md", "dim")],
+        [span("⏸ ", "warning", True), span("Plan onayı", bold=True), span("  SEN · 25dk", "dim")],
+        [span("○ ", "inactive", True), span("Geliştirme"), span("  claude", "dim")],
+        [span("○ ", "inactive", True), span("İnceleme"), span("  inceleyici", "dim")],
+        [span("○ ", "inactive", True), span("Yayın"), span("  claude", "dim")],
         [],
-        [span("Review rounds", bold=True)],
-        [span("● ", "warning"), span("round 1 · reviewer · CONCERNS · 3 notes → plan v2"), span("  Oct 10 09:58", "dim")],
-        [span("● ", "success"), span("round 2 · reviewer · PASS"), span("  Oct 10 10:21", "dim")],
+        [span("Denetim turları", bold=True)],
+        [span("● ", "warning"), span("1. tur · inceleyici · DİKKAT · 3 not → plan v2"), span("  10.10 09:58", "dim")],
+        [span("● ", "success"), span("2. tur · inceleyici · TEMİZ"), span("  10.10 10:21", "dim")],
         [],
-        [span("Other active packages", bold=True)],
-        [span("● Search index rebuild  ", "claude"), span(bar(60, 8), "success"), span("  3/5 · Backfill · claude · just now", "dim")],
-        [span("● Payments webhook  ", "claude"), span(bar(40, 8), "success"), span("  2/5 · Choose a retry policy · YOU · 3m ago", "dim")],
+        [span("Diğer aktif paketler", bold=True)],
+        [span("● Arama dizini yeniden kurulumu  ", "claude"), span(bar(60, 8), "success"), span("  3/5 · Geriye dönük doldurma · claude · az önce", "dim")],
+        [span("● Ödeme webhook'u  ", "claude"), span(bar(40, 8), "success"), span("  2/5 · Yeniden deneme politikasını seç · SEN · 3dk önce", "dim")],
         [],
-        [span("Completed", bold=True)],
-        [span("✓ ", "success"), span("API v2 migration  ·  Oct 9 17:20  ·  1d 4h", "dim")],
+        [span("Tamamlananlar", bold=True)],
+        [span("✓ ", "success"), span("API v2 geçişi  ·  09.10 17:20  ·  1g 4sa", "dim")],
         [],
-        [span("Read Oct 10 10:42  ·  /progress refresh  ·  /sessions", "dim")],
+        [span("Okundu 10.10 10:42  ·  /ilerleme yenile  ·  /oturumlar", "dim")],
     ]
+
+
+def progress_panel(lang):
+    W = 760 if lang == "en" else 880
+    rows = progress_rows(lang)
     H = 74 + len(rows) * LH + 16
-    body = window(W, H, "Progress")
+    body = window(W, H, "Progress" if lang == "en" else "İlerleme")
     y = 74
     for spans in rows:
         if spans:
             body.append(text_line(22, y, spans))
         y += LH
-    return svg(W, H, body, "session-progress: the /progress panel")
+    return svg(W, H, body, "session-progress: the /progress panel" if lang == "en" else "session-progress: /ilerleme paneli")
 
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / "overview.svg").write_text(overview(), encoding="utf-8")
-    (OUT / "progress-panel.svg").write_text(progress_panel(), encoding="utf-8")
-    (OUT / "sessions-tr.svg").write_text(sessions_tr(), encoding="utf-8")
+    for lang, suffix in (("en", ""), ("tr", "-tr")):
+        (OUT / f"overview{suffix}.svg").write_text(overview(lang), encoding="utf-8")
+        (OUT / f"progress-panel{suffix}.svg").write_text(progress_panel(lang), encoding="utf-8")
     print("wrote", ", ".join(p.name for p in sorted(OUT.glob("*.svg"))))
 
 

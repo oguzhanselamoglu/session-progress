@@ -1,5 +1,7 @@
 # session-progress
 
+**English** · [Türkçe](README.tr.md)
+
 A Claude Code plugin that shows how your work is going, **per session**:
 
 <p align="center">
@@ -135,22 +137,6 @@ The pure core has no access to the engine and is unit-tested directly:
 
 The hooks live in `hooks/register.tsx`. The README pictures are drawn from invented data by
 `python3 scripts/make-readme-images.py`; run it again after a visible change.
-
-## Türkçe
-
-İş paketlerinin ilerlemesini oturum bazında gösteren bir Claude Code eklentisi:
-
-- **Prompt üstü şerit:** bu oturumun paketi.
-- **`/oturumlar` paneli:** tüm açık oturumlar ayrı kartlarda, sende bekleyenler önce.
-- **`/ilerleme` paneli:** paketin ayrıntısı.
-
-<p align="center">
-  <img src="docs/images/sessions-tr.svg" alt="/oturumlar paneli Türkçe: dört açık oturum kart olarak, sende bekleyenler önce." width="480">
-</p>
-
-Varsayılan dil İngilizcedir. Türkçeye geçmek için `/progress language tr` yazman yeterli; seçimin sonraki tüm oturumlarında
-geçerli olur. Komutlar `/ilerleme` ve `/oturumlar` olur; İngilizceye dönmek için `/ilerleme dil en`.
-Claude'un `progress.json`'a yazdığı başlıklar ve notlar da onunla konuştuğun dilde olur.
 
 ## License
 

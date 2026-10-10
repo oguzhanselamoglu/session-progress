@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="527" viewBox="0 0 880 527" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13">
+<title>session-progress: /ilerleme paneli</title>
+<rect width="880" height="527" rx="12" fill="#151515"/>
+<path d="M0 12 a12 12 0 0 1 12 -12 h856 a12 12 0 0 1 12 12 v22 h-880 z" fill="#232323"/>
+<circle cx="20" cy="17" r="6" fill="#ff5f57"/><circle cx="40" cy="17" r="6" fill="#febc2e"/><circle cx="60" cy="17" r="6" fill="#28c840"/>
+<text x="440.0" y="22" text-anchor="middle" fill="#8b8b8b" font-size="12">İlerleme</text>
+<text x="22" y="74" xml:space="preserve"><tspan fill="#d97757" font-weight="700">Ödeme sayfası yenileme  (feature/checkout-redesign)</tspan></text>
+<text x="22" y="93" xml:space="preserve"><tspan fill="#4eba65">████████░░░░░░░░░░░░░░░░</tspan><tspan fill="#e8e6e3">  2/6 aşama  %33  ·  1sa 05dk</tspan></text>
+<text x="22" y="112" xml:space="preserve"><tspan fill="#e5b94a" font-weight="700">⏸ Sende bekliyor: Planı onayla</tspan></text>
+<text x="22" y="150" xml:space="preserve"><tspan fill="#4eba65" font-weight="700">✓ </tspan><tspan fill="#8b8b8b">Keşif</tspan><tspan fill="#8b8b8b">  claude · 18dk · 14 dosya okundu</tspan></text>
+<text x="22" y="169" xml:space="preserve"><tspan fill="#4eba65" font-weight="700">✓ </tspan><tspan fill="#8b8b8b">Plan</tspan><tspan fill="#8b8b8b">  claude · 22dk · docs/plans/checkout-coupons.md</tspan></text>
+<text x="22" y="188" xml:space="preserve"><tspan fill="#e5b94a" font-weight="700">⏸ </tspan><tspan fill="#e8e6e3" font-weight="700">Plan onayı</tspan><tspan fill="#8b8b8b">  SEN · 25dk</tspan></text>
+<text x="22" y="207" xml:space="preserve"><tspan fill="#6e6e6e" font-weight="700">○ </tspan><tspan fill="#e8e6e3">Geliştirme</tspan><tspan fill="#8b8b8b">  claude</tspan></text>
+<text x="22" y="226" xml:space="preserve"><tspan fill="#6e6e6e" font-weight="700">○ </tspan><tspan fill="#e8e6e3">İnceleme</tspan><tspan fill="#8b8b8b">  inceleyici</tspan></text>
+<text x="22" y="245" xml:space="preserve"><tspan fill="#6e6e6e" font-weight="700">○ </tspan><tspan fill="#e8e6e3">Yayın</tspan><tspan fill="#8b8b8b">  claude</tspan></text>
+<text x="22" y="283" xml:space="preserve"><tspan fill="#e8e6e3" font-weight="700">Denetim turları</tspan></text>
+<text x="22" y="302" xml:space="preserve"><tspan fill="#e5b94a">● </tspan><tspan fill="#e8e6e3">1. tur · inceleyici · DİKKAT · 3 not → plan v2</tspan><tspan fill="#8b8b8b">  10.10 09:58</tspan></text>
+<text x="22" y="321" xml:space="preserve"><tspan fill="#4eba65">● </tspan><tspan fill="#e8e6e3">2. tur · inceleyici · TEMİZ</tspan><tspan fill="#8b8b8b">  10.10 10:21</tspan></text>
+<text x="22" y="359" xml:space="preserve"><tspan fill="#e8e6e3" font-weight="700">Diğer aktif paketler</tspan></text>
+<text x="22" y="378" xml:space="preserve"><tspan fill="#d97757">● Arama dizini yeniden kurulumu  </tspan><tspan fill="#4eba65">█████░░░</tspan><tspan fill="#8b8b8b">  3/5 · Geriye dönük doldurma · claude · az önce</tspan></text>
+<text x="22" y="397" xml:space="preserve"><tspan fill="#d97757">● Ödeme webhook'u  </tspan><tspan fill="#4eba65">███░░░░░</tspan><tspan fill="#8b8b8b">  2/5 · Yeniden deneme politikasını seç · SEN · 3dk önce</tspan></text>
+<text x="22" y="435" xml:space="preserve"><tspan fill="#e8e6e3" font-weight="700">Tamamlananlar</tspan></text>
+<text x="22" y="454" xml:space="preserve"><tspan fill="#4eba65">✓ </tspan><tspan fill="#8b8b8b">API v2 geçişi  ·  09.10 17:20  ·  1g 4sa</tspan></text>
+<text x="22" y="492" xml:space="preserve"><tspan fill="#8b8b8b">Okundu 10.10 10:42  ·  /ilerleme yenile  ·  /oturumlar</tspan></text>
+</svg>
