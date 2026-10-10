@@ -7,7 +7,7 @@ export type Dict = {
   /** Command names this language registers (the other language's still answer when typed). */
   cmd: { progress: string; sessions: string }
   /** Sub-commands of the progress command, in this language. */
-  sub: { refresh: string; bind: string; unbind: string; name: string; language: string }
+  sub: { refresh: string; bind: string; unbind: string; name: string; language: string; init: string }
   /** This language's own name, as the switch command reports it. */
   languageName: string
   status: Record<PhaseStatus, string>
@@ -71,6 +71,10 @@ export type Dict = {
     languageNow: string
     languageUsage: string
     languageFailed: (why: string) => string
+    initDone: (dir: string) => string
+    initExists: (dir: string) => string
+    initNoRepo: string
+    initFailed: (why: string) => string
   }
   // band
   b: {
@@ -98,6 +102,8 @@ export type Dict = {
     others: string
     completed: string
     footer: (read: string) => string
+    noFolder: (dir: string) => string
+    noFolderHint: string
   }
   // /sessions pane
   s: {
@@ -125,7 +131,7 @@ export type Dict = {
 
 const en: Dict = {
   cmd: { progress: 'progress', sessions: 'sessions' },
-  sub: { refresh: 'refresh', bind: 'bind', unbind: 'unbind', name: 'name', language: 'language' },
+  sub: { refresh: 'refresh', bind: 'bind', unbind: 'unbind', name: 'name', language: 'language', init: 'init' },
   languageName: 'English',
   status: {
     done: 'done',
@@ -175,8 +181,8 @@ const en: Dict = {
   recordSetupFailed: (msg) => `session-progress: session record could not be set up — ${msg}`,
   commandFailed: (msg) => `session-progress: command could not be registered — ${msg}`,
   c: {
-    progressDescription: "This session's work package progress. Sub-commands: refresh · bind <package> · unbind · name <session name> · language en|tr",
-    progressHint: '[refresh | bind <package> | unbind | name <name> | language en|tr]',
+    progressDescription: "This session's work package progress. Sub-commands: init · refresh · bind <package> · unbind · name <session name> · language en|tr",
+    progressHint: '[init | refresh | bind <package> | unbind | name <name> | language en|tr]',
     sessionsDescription: 'Work package progress of every open session, one by one.',
     noRecord: 'The session record could not be set up; binding and naming do not work in this session (the band and the panel do).',
     bindUsage: 'Usage: /progress bind <package>',
@@ -194,6 +200,10 @@ const en: Dict = {
     languageNow: 'Language: English. Commands: /progress, /sessions.',
     languageUsage: 'Usage: /progress language en|tr  (en English · tr Türkçe). Kept for all your sessions.',
     languageFailed: (why) => `The language could not be changed: ${why}`,
+    initDone: (dir) => `Created ${dir}/ — commit it with the project. Now ask Claude to track a multi-step task, e.g. "plan this and track it with session-progress".`,
+    initExists: (dir) => `${dir}/ already exists; nothing to do.`,
+    initNoRepo: 'Not in a git repository; session-progress works per repository.',
+    initFailed: (why) => `The packages folder could not be created: ${why}`,
   },
   b: {
     now: 'Now',
@@ -219,6 +229,8 @@ const en: Dict = {
     others: 'Other active packages',
     completed: 'Completed',
     footer: (read) => `Read ${read}  ·  /progress refresh  ·  /sessions`,
+    noFolder: (dir) => `No work packages in this repository yet (${dir}/).`,
+    noFolderHint: 'Run /progress init, then ask Claude to track a multi-step task with session-progress.',
   },
   s: {
     open: (n) => `Open sessions · ${n}`,
@@ -245,7 +257,7 @@ const en: Dict = {
 
 const tr: Dict = {
   cmd: { progress: 'ilerleme', sessions: 'oturumlar' },
-  sub: { refresh: 'yenile', bind: 'bağla', unbind: 'çöz', name: 'ad', language: 'dil' },
+  sub: { refresh: 'yenile', bind: 'bağla', unbind: 'çöz', name: 'ad', language: 'dil', init: 'kur' },
   languageName: 'Türkçe',
   status: {
     done: 'tamamlandı',
@@ -295,8 +307,8 @@ const tr: Dict = {
   recordSetupFailed: (msg) => `session-progress: oturum kaydı kurulamadı — ${msg}`,
   commandFailed: (msg) => `session-progress: komut kaydedilemedi — ${msg}`,
   c: {
-    progressDescription: 'Bu oturumun iş paketi ilerlemesi. Alt komutlar: yenile · bağla <paket> · çöz · ad <oturum adı> · dil en|tr',
-    progressHint: '[yenile | bağla <paket> | çöz | ad <ad> | dil en|tr]',
+    progressDescription: 'Bu oturumun iş paketi ilerlemesi. Alt komutlar: kur · yenile · bağla <paket> · çöz · ad <oturum adı> · dil en|tr',
+    progressHint: '[kur | yenile | bağla <paket> | çöz | ad <ad> | dil en|tr]',
     sessionsDescription: 'Açık oturumların iş paketi ilerlemesi, ayrı ayrı.',
     noRecord: 'Oturum kaydı kurulamadı; bağlama ve oturum adı bu oturumda çalışmıyor (şerit ve /ilerleme çalışır).',
     bindUsage: 'Kullanım: /ilerleme bağla <paket>',
@@ -314,6 +326,10 @@ const tr: Dict = {
     languageNow: 'Dil: Türkçe. Komutlar: /ilerleme, /oturumlar.',
     languageUsage: 'Kullanım: /ilerleme dil en|tr  (en English · tr Türkçe). Tüm oturumlarında geçerli olur.',
     languageFailed: (why) => `Dil değiştirilemedi: ${why}`,
+    initDone: (dir) => `${dir}/ oluşturuldu — projeyle birlikte commit'le. Şimdi Claude'dan çok adımlı bir işi takip etmesini iste, örn. "bunu planla ve session-progress ile takip et".`,
+    initExists: (dir) => `${dir}/ zaten var; yapılacak bir şey yok.`,
+    initNoRepo: 'Bir git deposunda değilsin; session-progress depo bazında çalışır.',
+    initFailed: (why) => `Paket klasörü oluşturulamadı: ${why}`,
   },
   b: {
     now: 'Şu an',
@@ -339,6 +355,8 @@ const tr: Dict = {
     others: 'Diğer aktif paketler',
     completed: 'Tamamlananlar',
     footer: (read) => `Okundu ${read}  ·  /ilerleme yenile  ·  /oturumlar`,
+    noFolder: (dir) => `Bu depoda henüz iş paketi yok (${dir}/).`,
+    noFolderHint: '/ilerleme kur yaz, sonra Claude\'dan çok adımlı bir işi session-progress ile takip etmesini iste.',
   },
   s: {
     open: (n) => `Açık oturumlar · ${n}`,
@@ -366,7 +384,11 @@ const tr: Dict = {
 export const DICTS: Record<Lang, Dict> = { en, tr }
 
 /** Sub-command aliases in every language → one canonical action. */
-export const SUB_ALIASES: Record<string, 'refresh' | 'bind' | 'unbind' | 'name' | 'language'> = {
+export const SUB_ALIASES: Record<string, 'refresh' | 'bind' | 'unbind' | 'name' | 'language' | 'init'> = {
+  init: 'init',
+  kur: 'init',
+  başlat: 'init',
+  baslat: 'init',
   language: 'language',
   lang: 'language',
   dil: 'language',

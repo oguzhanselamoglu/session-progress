@@ -66,6 +66,8 @@ export type Snapshot = {
   sessions: SessionRecord[];
   /** Records counted as closed WITHOUT being read, because their file has not been written for a long time. */
   closedSessions: number;
+  /** The packages folder (relative) and whether any checkout has it; `null` outside a git repository. */
+  folder: { dir: string; exists: boolean } | null;
 };
 
 /** `session-progress-session-v1` — one Claude Code session's record; only that session's plugin writes it. */

@@ -227,7 +227,7 @@ export function transitions(doc: ProgressDoc, previous: string | undefined, appe
 export function mainRootFromGitFile(root: string, gitFileText: string | null): string {
   if (gitFileText === null) return root
   const m = /^gitdir:\s*(.+?)\s*$/m.exec(gitFileText)
-  const gitdir = m?.[1]
+  const gitdir = m?.[1]?.replace(/\\/g, '/')
   if (!gitdir) return root
   const idx = gitdir.lastIndexOf('/.git/worktrees/')
   return idx >= 0 ? gitdir.slice(0, idx) : root
@@ -235,6 +235,6 @@ export function mainRootFromGitFile(root: string, gitFileText: string | null): s
 
 /** `.git/worktrees/<name>/gitdir` content (`<worktree>/.git`) → the worktree root. */
 export function worktreeRootFromGitdir(text: string): string | null {
-  const line = text.trim()
+  const line = text.trim().replace(/\\/g, '/')
   return line.endsWith('/.git') ? line.slice(0, -'/.git'.length) : null
 }

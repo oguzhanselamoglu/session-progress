@@ -6,7 +6,7 @@
 <text x="720.0" y="22" text-anchor="middle" fill="#8b8b8b" font-size="12">Claude Code — acme-shop</text>
 <text x="28" y="70" xml:space="preserve"><tspan fill="#8b8b8b">&gt; </tspan><tspan fill="#e8e6e3">Ödeme sayfasına kupon alanı ekle, doğrulaması sunucuda olsun</tspan></text>
 <text x="28" y="114" xml:space="preserve"><tspan fill="#e8e6e3">⏺ </tspan><tspan fill="#e8e6e3">Önce planlayıp bunu bir iş paketi olarak izleyeceğim.</tspan></text>
-<text x="28" y="158" xml:space="preserve"><tspan fill="#4eba65">⏺ </tspan><tspan fill="#e8e6e3" font-weight="700">Write</tspan><tspan fill="#8b8b8b">(.claude/progress/checkout-redesign/progress.json)</tspan></text>
+<text x="28" y="158" xml:space="preserve"><tspan fill="#4eba65">⏺ </tspan><tspan fill="#e8e6e3" font-weight="700">Write</tspan><tspan fill="#8b8b8b">(.progress/checkout-redesign/progress.json)</tspan></text>
 <text x="28" y="180" xml:space="preserve"><tspan fill="#8b8b8b">  ⎿  </tspan><tspan fill="#8b8b8b">6 aşama yazıldı: Keşif, Plan, Plan onayı, Geliştirme, İnceleme, Yayın</tspan></text>
 <text x="28" y="224" xml:space="preserve"><tspan fill="#e8e6e3">⏺ </tspan><tspan fill="#e8e6e3">Ödeme modülünü inceledim (14 dosya) ve planı yazdım:</tspan></text>
 <text x="28" y="246" xml:space="preserve"><tspan fill="#8b8b8b">    1. </tspan><tspan fill="#e8e6e3">CouponField bileşeni + forma bağlama</tspan></text>

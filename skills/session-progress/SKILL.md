@@ -1,6 +1,6 @@
 ---
 name: session-progress
-description: Keep a work package's progress.json current so the session-progress band and panels show it. Use when starting, advancing, pausing for the user, or finishing multi-step work (a feature, a migration, a review cycle) in a repository that has a session-progress packages folder or a .claude/session-progress.json file, or when the user asks to track work with session-progress.
+description: Keep a work package's progress.json current so the session-progress band and panels show it. Use when starting, advancing, pausing for the user, or finishing multi-step work (a feature, a migration, a review cycle) in a repository that has a session-progress packages folder (default .progress) or a .claude/session-progress.json file, after the user ran /progress init, or whenever the user asks to track or show the progress of work with session-progress.
 ---
 
 # Tracking work with session-progress
@@ -17,9 +17,12 @@ project leaves unsaid.
 ## Where the file lives
 
 1. Read `.claude/session-progress.json` at the repository root if it exists. Its `packagesDir` names the packages folder
-   (relative to the root). Without the file or the field, the folder is `.claude/progress`.
+   (relative to the root). Without the file or the field, the folder is `.progress`.
 2. One folder per package: `<packagesDir>/<package>/progress.json`. `<package>` is a short kebab-case name
    (`login-flow`, `billing-v2-migration`) using only letters, digits, `.`, `_` and `-`.
+3. Never put the packages folder under `.claude/`: Claude Code protects that path and every write would ask for permission.
+4. If the packages folder does not exist yet and the user asked you to track the work, just write the file: the folders are created
+   with it (the user can also run `/progress init`, which creates the folder with a short README).
 
 Writing the file with your own Write/Edit tool (or a Bash command that names the path) **binds this session to that package**: the
 band then shows it. Do not write another session's package file; one package has one writer.
@@ -77,10 +80,11 @@ A file that does not match is shown as an error with the path of the first probl
 
 ## Commands the user has
 
+- `/progress init` creates the packages folder in a repository that never used the plugin.
 - `/progress` opens the progress panel. `/progress refresh` re-scans. `/progress bind <package>` binds by hand.
   `/progress unbind` removes the binding. `/progress name <name>` names the session in the sessions panel.
 - `/sessions` opens the panel of all open sessions.
 - `/progress language tr` switches the band, panels and commands to Turkish (`/ilerleme dil en` back to English); the choice is
   kept for all later sessions. English is the default.
 
-In Turkish the commands are `/ilerleme` (`yenile`, `bağla`, `çöz`, `ad`, `dil`) and `/oturumlar`.
+In Turkish the commands are `/ilerleme` (`kur`, `yenile`, `bağla`, `çöz`, `ad`, `dil`) and `/oturumlar`.

@@ -26,7 +26,7 @@ için yapıldı.
 
 ### Tipik bir akış
 
-1. Çok adımlı bir değişiklik istersin. Claude planını aşamalar hâlinde `.claude/progress/<paket>/progress.json` dosyasına yazar; o
+1. Çok adımlı bir değişiklik istersin. Claude planını aşamalar hâlinde `.progress/<paket>/progress.json` dosyasına yazar; o
    oturumun prompt'unun üstünde şerit belirir.
 2. Claude aşamalarda ilerledikçe dosyayı günceller; çubuk ve şu anki aşama onu izler.
 3. Kararın gerektiğinde Claude aşamayı `waiting-user` yapar: şerit sarıya döner, bir bildirim neyin beklediğini söyler ve oturum diğer
@@ -50,6 +50,16 @@ Arayüz ilk açılışta İngilizcedir; Türkçeye geçmek için bir kez şunu y
 ```
 /progress language tr
 ```
+
+**Nerede çalışır:** Claude Code (terminal ve masaüstü uygulamasının Code sekmesi); şerit ve paneller Claude Code arayüzüdür. macOS'ta
+denendi; Linux'ta aynı çalışması beklenir, Windows yolları destekleniyor ama Windows'ta henüz denenmedi — geri bildirimlere açığız.
+
+## Hızlı başlangıç
+
+1. Deponda: `/ilerleme kur` — `.progress/` klasörünü oluşturur (projeyle birlikte commit'le).
+2. Claude'dan birkaç adımlı bir iş iste ve *"bunu planla ve session-progress ile takip et"* de. Claude paket dosyasını yazar; şerit
+   prompt'un üstünde belirir.
+3. Herhangi bir oturumda `/oturumlar` ile tüm açık oturumları gör; seni bekleyenler en üstte.
 
 ## Nasıl çalışır
 
@@ -103,7 +113,7 @@ Kuralların tamamı [`skills/session-progress/SKILL.md`](skills/session-progress
 
 | Alan | Varsayılan | Anlamı |
 |---|---|---|
-| `packagesDir` | `.claude/progress` | Her paket için bir alt klasör tutan klasör, köke göre. |
+| `packagesDir` | `.progress` | Her paket için bir alt klasör tutan klasör, köke göre. |
 | `ownerLabels` | yok | Sahip etiketlerinin görünen adları. `user` her zaman SEN olarak gösterilir. |
 | `schemaAliases` | yok | `session-progress-v1` gibi okunacak başka `schema` adları (ad değişikliğinden önceki dosyalar). |
 
@@ -120,8 +130,8 @@ Varsayılan dil İngilizcedir. Herkes kendisi değiştirebilir; seçim sonraki t
 
 | Dil | Komutlar | Alt komutlar |
 |---|---|---|
-| English | `/progress`, `/sessions` | `refresh` · `bind <package>` · `unbind` · `name <name>` · `language en\|tr` |
-| Türkçe | `/ilerleme`, `/oturumlar` | `yenile` · `bağla <paket>` · `çöz` · `ad <ad>` · `dil en\|tr` |
+| English | `/progress`, `/sessions` | `init` · `refresh` · `bind <package>` · `unbind` · `name <name>` · `language en\|tr` |
+| Türkçe | `/ilerleme`, `/oturumlar` | `kur` · `yenile` · `bağla <paket>` · `çöz` · `ad <ad>` · `dil en\|tr` |
 
 Alt komutlar iki dilde de anlaşılır; diğer dilin kelimesini yazsan da çalışır. Claude'un `progress.json`'a yazdığı başlıklar ve notlar,
 onunla konuştuğun dilde olur.

@@ -2,13 +2,13 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { BAND, NOW, PANE, SESSIONS, doc, fakeRepo, sessionFile, start } from './fixture'
 
-// A project that never configured the plugin: packages under `.claude/progress`, English, any owner labels.
-const DEFAULT_DIR = '/repo/.claude/progress'
+// A project that never configured the plugin: packages under `.progress`, English, any owner labels.
+const DEFAULT_DIR = '/repo/.progress'
 const pkgAt = (name: string, dir = DEFAULT_DIR): string => `${dir}/${name}/progress.json`
 const SURFACES = ['terminal', 'desktop'] as const
 const generic = { bare: true, config: null, store: {} } as const
 
-test('no config: packages are read from .claude/progress, texts are English, commands are /progress and /sessions', async ($, on) => {
+test('no config: packages are read from .progress, texts are English, commands are /progress and /sessions', async ($, on) => {
   mock.clock(on, { now: NOW })
   const files: Record<string, string> = {
     [pkgAt('login-flow')]: JSON.stringify(
@@ -143,4 +143,38 @@ test('schemaAliases: a file with an older schema name is read when the project l
   const after = await $.ui.mount({ ...PANE, surface: 'terminal' } as never)
   expect(await after.find({ type: 'Text', text: /schema must be "session-progress-v1"/ })).toBeDefined()
   await after.unmount()
+})
+
+test('a repository without packages: both panels say how to start; /progress init creates the folder once and starts the session record', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const files: Record<string, string> = { '/repo/README.md': 'x' }
+  fakeRepo(on, files, generic)
+  await start($)
+  for (const pane of [PANE, SESSIONS]) {
+    const ui = await $.ui.mount({ ...pane, surface: 'terminal' } as never)
+    expect(await ui.find({ type: 'Text', text: /No work packages in this repository yet \(\.progress\/\)/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /Run \/progress init/ })).toBeDefined()
+    await ui.unmount()
+  }
+  expect(files[sessionFile('self-1')], 'no record before init').toBeUndefined()
+  const res = (await $.command.run({ command: 'progress', args: 'init' } as never)) as { text?: string }
+  expect(res.text).toMatch(/^Created \.progress\/ — commit it with the project\./)
+  expect(files['/repo/.progress/README.md']).toMatch(/^# Work packages/)
+  expect(files[sessionFile('self-1')], 'the session record is written once the folder exists').toBeDefined()
+  const ui = await $.ui.mount({ ...SESSIONS, surface: 'terminal' } as never)
+  expect(await ui.find({ type: 'Text', text: /Open sessions · 1/ })).toBeDefined()
+  await ui.unmount()
+  const again = (await $.command.run({ command: 'progress', args: 'init' } as never)) as { text?: string }
+  expect(again.text).toBe('.progress/ already exists; nothing to do.')
+  expect(files['/repo/.progress/README.md']).toMatch(/^# Work packages/)
+})
+
+test('/ilerleme kur uses the project folder and answers in Turkish', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const files: Record<string, string> = {}
+  fakeRepo(on, files, { ...generic, store: { language: 'tr' }, config: JSON.stringify({ packagesDir: 'docs/work' }) })
+  await start($)
+  const res = (await $.command.run({ command: 'ilerleme', args: 'kur' } as never)) as { text?: string }
+  expect(res.text).toMatch(/^docs\/work\/ oluşturuldu/)
+  expect(files['/repo/docs/work/README.md']).toBeDefined()
 })

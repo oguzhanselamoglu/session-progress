@@ -36,6 +36,7 @@ import {
   labelOf,
   mentionsProgress,
   newSession,
+  normPath,
   organizeSessions,
   othersWaitingOnUser,
   packageFromPath,
@@ -92,7 +93,9 @@ const ago = (iso: string, now: number): string => {
   if (min < 1440) return a.h(Math.floor(min / 60))
   return a.d(Math.floor(min / 1440))
 }
-const baseName = (path: string): string => path.replace(/\/+$/, '').split('/').pop() ?? path
+const baseName = (path: string): string => normPath(path).replace(/\/+$/, '').split('/').pop() ?? path
+/** Absolute path, POSIX (`/x`) or Windows (`C:/x` once normalised). */
+const isAbsolute = (path: string): boolean => /^([A-Za-z]:)?\//.test(normPath(path))
 const owner = (who: string): string => ownerLabel(who, t(), ownerLabels)
 
 /** Known `progress.json` paths (root → path); renewed by a full scan, only these are read by a quick refresh. */
@@ -109,6 +112,8 @@ let worktreeSig = ''
  * folder (the plugin is loaded globally — other projects' `.git` is never written; submodule / `--separate-git-dir` repos stay quiet).
  */
 let registryOn = false
+/** Whether any checkout (main or a worktree) has the packages folder — `null` outside a git repository. */
+let folderExists: boolean | null = null
 /** Refreshes run ONE at a time: timers, turn end and commands arriving together never read the same old `seen` twice. */
 let queue: Promise<void> = Promise.resolve()
 /** Writes to this session's own record run ONE at a time: turn start, a tool call and the heartbeat never lose the last write. */
@@ -121,7 +126,7 @@ let writeWarned = false
 let lastScanError: string | null = null
 
 async function findCheckoutRoot($: Env): Promise<string | null> {
-  let dir = (await $.session.cwd()).replace(/\/+$/, '')
+  let dir = normPath(await $.session.cwd()).replace(/\/+$/, '')
   for (let i = 0; i < 12 && dir; i++) {
     if (await $.fs.exists(`${dir}/.git`)) return dir
     const up = dir.slice(0, dir.lastIndexOf('/'))
@@ -166,23 +171,23 @@ async function loadConfig($: Env, main: string): Promise<string | null> {
 /** Finds the main checkout + `.git/worktrees/*` roots and the `progress.json` paths in each. */
 async function scan($: Env): Promise<string | null> {
   cwdRoot = await findCheckoutRoot($)
-  if (!cwdRoot) return t().noRepo
+  if (!cwdRoot) {
+    folderExists = null
+    return t().noRepo
+  }
   const gitStat = await $.fs.stat(`${cwdRoot}/.git`)
   const gitText = gitStat.kind === 'file' ? await $.fs.read(`${cwdRoot}/.git`) : null
   const main = mainRootFromGitFile(cwdRoot, typeof gitText === 'string' ? gitText : null)
   mainRoot = main
   const configError = await loadConfig($, main)
-  try {
-    registryOn = (await $.fs.stat(`${main}/.git`)).kind === 'dir' && (await $.fs.exists(`${main}/${packagesDir}`))
-  } catch {
-    registryOn = false
-  }
   const found = await discoverRoots($, main)
   roots = found
   const next: { root: string; path: string }[] = []
+  let anyFolder = false
   for (const root of found) {
     const dir = `${root}/${packagesDir}`
     if (!(await $.fs.exists(dir))) continue
+    anyFolder = true
     for (const entry of await $.fs.list(dir)) {
       if (entry.kind !== 'dir') continue
       const path = `${dir}/${entry.name}/progress.json`
@@ -190,6 +195,14 @@ async function scan($: Env): Promise<string | null> {
     }
   }
   known = next
+  folderExists = anyFolder
+  // Records only in a repository that uses the plugin: its packages folder in the main checkout OR any worktree (a branch that just
+  // ran `/progress init` counts before it is merged).
+  try {
+    registryOn = anyFolder && (await $.fs.stat(`${main}/.git`)).kind === 'dir'
+  } catch {
+    registryOn = false
+  }
   return configError
 }
 
@@ -261,7 +274,8 @@ async function readAll($: Env, scanError: string | null): Promise<void> {
   }
   const now = await $.clock.now()
   const { records: sessions, closedUnread } = await readSessions($, now)
-  const snap: Snapshot = { readAt: now, cwdRoot, reads, error: scanError, sessions, closedSessions: closedUnread }
+  const folder = folderExists === null ? null : { dir: packagesDir, exists: folderExists }
+  const snap: Snapshot = { readAt: now, cwdRoot, reads, error: scanError, sessions, closedSessions: closedUnread, folder }
   await update($, snapshot, () => snap)
   await notify($, reads)
 }
@@ -305,6 +319,7 @@ async function refreshNow($: Env, full: boolean): Promise<void> {
       error: t().scanFailed((e as Error).message),
       sessions: s?.sessions ?? [],
       closedSessions: s?.closedSessions ?? 0,
+      folder: s?.folder ?? null,
     }))
   }
 }
@@ -439,6 +454,7 @@ async function runProgress($: Env, args: string): Promise<{ text: string }> {
     return { text: c.unbound }
   }
   if (action === 'language') return setLanguage($, arg)
+  if (action === 'init') return initFolder($)
   if (action === 'name') {
     const label = snippetOf(arg, LABEL_MAX)
     await writeSelf($, (r) => ({ ...r, label }))
@@ -447,6 +463,35 @@ async function runProgress($: Env, args: string): Promise<{ text: string }> {
   await refresh($, action === 'refresh' || known.length === 0)
   const opened = await $.ui.open({ id: PANE, title: c.paneTitle })
   return { text: opened.isPlaced ? c.paneOpened : c.paneNotPlaced }
+}
+
+/** The README `/progress init` puts in the new packages folder (repository text: always English). */
+const PACKAGES_README = `# Work packages
+
+One folder per piece of multi-step work, each holding a \`progress.json\` with its phases. Claude writes them as the work moves;
+the [session-progress](https://github.com/oguzhanselamoglu/session-progress) plugin shows them above the prompt and in its panels.
+Commit this folder with the project.
+`
+
+/**
+ * `/progress init`: creates the packages folder (from the project's config, default `.progress`) in THIS checkout with a short
+ * README, so the plugin starts working in a repository that never used it. Nothing is overwritten.
+ */
+async function initFolder($: Env): Promise<{ text: string }> {
+  await refresh($, true)
+  const c = t().c
+  if (!cwdRoot) return { text: c.initNoRepo }
+  const dir = `${cwdRoot}/${packagesDir}`
+  if (await $.fs.exists(dir)) return { text: c.initExists(packagesDir) }
+  try {
+    await $.fs.write(`${dir}/README.md`, PACKAGES_README)
+  } catch (e) {
+    return { text: c.initFailed((e as Error).message) }
+  }
+  await refresh($, true)
+  // The registry is on now: write this session's record so the sessions panel lists it at once.
+  await writeSelf($, (r, now) => ({ ...r, lastSeen: now }))
+  return { text: c.initDone(packagesDir) }
 }
 
 /** Registers the command names of the language in use (the other language's names keep answering if registered earlier). */
@@ -547,7 +592,8 @@ export const register: Register = (on) => {
   // Only write tools + Bash (every other tool call never reaches the plugin).
   on('tool.call', { tool: ['Write', 'Edit', 'NotebookEdit', 'Bash'] }, async ($, e, next) => {
     const input = e as unknown as Record<string, unknown>
-    const directPath = PATH_TOOLS.has(e.tool) ? (input['file_path'] ?? input['notebook_path']) : null
+    const rawPath = PATH_TOOLS.has(e.tool) ? (input['file_path'] ?? input['notebook_path']) : null
+    const directPath = typeof rawPath === 'string' ? normPath(rawPath) : null
     const direct = packageFromPath(directPath, segment)
     // Bash: candidates are ONLY the packages the command names; their path in every root is measured before and after the call.
     const names = e.tool === 'Bash' && mentionsProgress(input['command']) ? candidatePackages(input['command'], segment) : []
@@ -558,7 +604,7 @@ export const register: Register = (on) => {
     const ran = await next(e)
     if (ran.deny !== undefined || ran.isError) return ran // a refused or failed write never binds
     if (direct) {
-      await bindIfLive($, direct, typeof directPath === 'string' && directPath.startsWith('/') ? directPath : null)
+      await bindIfLive($, direct, directPath && isAbsolute(directPath) ? directPath : null)
       return ran
     }
     let after = await mtimesOf($, paths)
@@ -716,6 +762,8 @@ export const register: Register = (on) => {
           )
         }
       }
+    } else if (snap.folder && !snap.folder.exists) {
+      out.push(<Text key="none" bold>{d.p.noFolder(snap.folder.dir)}</Text>, <Text key="hint" dimColor>{d.p.noFolderHint}</Text>)
     } else {
       out.push(<Text key="none" dimColor>{d.p.none}</Text>)
     }
@@ -807,6 +855,15 @@ export const register: Register = (on) => {
       return lines
     }
 
+    if (snap.folder && !snap.folder.exists) {
+      // A repository that does not use the plugin yet: no records are kept, so there is nothing to list — say how to start.
+      return (
+        <Box flexDirection="column">
+          <Text bold>{d.p.noFolder(snap.folder.dir)}</Text>
+          <Text dimColor>{d.p.noFolderHint}</Text>
+        </Box>
+      )
+    }
     const out = [
       <Text key="hd">
         <Text bold>{d.s.open(rows.length)}</Text>

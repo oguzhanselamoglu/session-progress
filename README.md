@@ -25,7 +25,7 @@ It is built for running several sessions at once (worktrees, parallel features, 
 
 ### A typical flow
 
-1. You ask for a multi-step change. Claude writes `.claude/progress/<package>/progress.json` with its plan as phases; the band appears
+1. You ask for a multi-step change. Claude writes `.progress/<package>/progress.json` with its plan as phases; the band appears
    above the prompt for that session.
 2. Claude moves through the phases and updates the file; the bar and the current phase follow.
 3. When Claude needs your decision it marks the phase `waiting-user`: the band turns amber, a toast says what is waiting, and the
@@ -43,6 +43,16 @@ All names in these pictures are invented examples.
 
 Type it in a terminal session; answer `y` to add the marketplace and pick the user scope. With the user scope it also loads in the
 desktop app's Code tab. Claude Code 2.1.287 or later.
+
+**Where it runs:** Claude Code (terminal and the desktop app's Code tab); the band and panels are Claude Code interface. Tested on macOS;
+Linux should work the same, Windows paths are handled but not yet tried on Windows — reports are welcome.
+
+## Quick start
+
+1. In your repository: `/progress init` — creates `.progress/` (commit it with the project).
+2. Ask Claude for something with a few steps and say *"plan this and track it with session-progress"*. Claude writes the package file;
+   the band appears above the prompt.
+3. Open `/sessions` in any session to see every open session, the ones waiting on you first.
 
 ## How it works
 
@@ -95,7 +105,7 @@ The full rules are in [`skills/session-progress/SKILL.md`](skills/session-progre
 
 | Field | Default | Meaning |
 |---|---|---|
-| `packagesDir` | `.claude/progress` | Folder holding one sub-folder per package, relative to the root. |
+| `packagesDir` | `.progress` | Folder holding one sub-folder per package, relative to the root. |
 | `ownerLabels` | none | Display names for owner labels. `user` is always shown as YOU. |
 | `schemaAliases` | none | Other `schema` names to read as `session-progress-v1` (files from before a rename). |
 
@@ -112,8 +122,8 @@ The band, both panels and the command names switch at once in the current sessio
 
 | Language | Commands | Sub-commands |
 |---|---|---|
-| English | `/progress`, `/sessions` | `refresh` · `bind <package>` · `unbind` · `name <name>` · `language en\|tr` |
-| Türkçe | `/ilerleme`, `/oturumlar` | `yenile` · `bağla <paket>` · `çöz` · `ad <ad>` · `dil en\|tr` |
+| English | `/progress`, `/sessions` | `init` · `refresh` · `bind <package>` · `unbind` · `name <name>` · `language en\|tr` |
+| Türkçe | `/ilerleme`, `/oturumlar` | `kur` · `yenile` · `bağla <paket>` · `çöz` · `ad <ad>` · `dil en\|tr` |
 
 Sub-commands are understood in both languages, so typing the other language's word still works. What Claude writes into
 `progress.json` (titles, notes) follows the language you talk to it in.

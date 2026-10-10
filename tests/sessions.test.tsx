@@ -25,10 +25,10 @@ test('package detection: Write/Edit path; Bash candidates from the command text;
   expect(candidatePackages('git add docs/packages/*/progress.json', SEG), 'a glob is no name').toEqual([])
 })
 
-test('default folder (.claude/progress): path and Bash candidate; `progress.json` is not a package name', () => {
-  expect(packageFromPath('/r/.claude/progress/login-flow/progress.json')).toBe('login-flow')
+test('default folder (.progress): path and Bash candidate; `progress.json` is not a package name', () => {
+  expect(packageFromPath('/r/.progress/login-flow/progress.json')).toBe('login-flow')
   expect(packageFromPath('/r/docs/packages/x/progress.json'), 'another folder').toBeNull()
-  expect(candidatePackages('cat .claude/progress/login-flow/progress.json')).toEqual(['login-flow'])
+  expect(candidatePackages('cat .progress/login-flow/progress.json')).toEqual(['login-flow'])
   expect(segmentOf('docs/packages/')).toBe('packages')
 })
 
@@ -241,3 +241,9 @@ test('/sessions card: phase strip, next phase, pending decision', async ($, on) 
   expect(await ui.find({ type: 'Text', text: /Plan · Build/ }), 'phase names are not listed on the card').toBeUndefined()
   await ui.unmount()
 })
+
+test('Windows paths: backslashes in a written path or a command still name the package', () => {
+  expect(packageFromPath('C:\\dev\\acme\\docs\\packages\\checkout-redesign\\progress.json', SEG)).toBe('checkout-redesign')
+  expect(candidatePackages('type C:\\dev\\acme\\docs\\packages\\search-index\\progress.json', SEG)).toEqual(['search-index'])
+})
+

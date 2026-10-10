@@ -5,7 +5,7 @@ import { isComplete, waitingWho } from './model'
 /** A session whose last signal is older than this (or that ended) counts as closed. The heartbeat is every 30 s. */
 export const OPEN_MS = 3 * 60_000
 /** Default packages folder (relative to the checkout root) when the project does not name one. */
-export const DEFAULT_PACKAGES_DIR = '.claude/progress'
+export const DEFAULT_PACKAGES_DIR = '.progress'
 /** Session records folder (under the main repository's `.git`: shared by every worktree, never tracked by git). */
 export const sessionsDir = (mainRoot: string): string => `${mainRoot}/.git/session-progress/sessions`
 
@@ -17,12 +17,14 @@ export const segmentOf = (packagesDir: string): string => packagesDir.replace(/\
 const DEFAULT_SEGMENT = segmentOf(DEFAULT_PACKAGES_DIR)
 
 const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/** Windows paths (`C:\\repo\\x`) → forward slashes, the form every path here is compared in. */
+export const normPath = (p: string): string => p.replace(/\\/g, '/')
 const NAME = '([A-Za-z0-9._-]+)'
 
 /** The package named by a `progress.json` path (the last one when several are in it). */
 export function packageFromPath(path: unknown, segment = DEFAULT_SEGMENT): string | null {
   if (typeof path !== 'string') return null
-  const all = [...path.matchAll(new RegExp(`${escape(segment)}/${NAME}/progress\\.json`, 'g'))]
+  const all = [...normPath(path).matchAll(new RegExp(`${escape(segment)}/${NAME}/progress\\.json`, 'g'))]
   return all.length ? (all[all.length - 1]?.[1] ?? null) : null
 }
 
@@ -37,7 +39,7 @@ export const mentionsProgress = (command: unknown): boolean => typeof command ==
 export function candidatePackages(command: unknown, segment = DEFAULT_SEGMENT): string[] {
   if (typeof command !== 'string') return []
   const re = new RegExp(`${escape(segment)}/${NAME}`, 'g')
-  return [...new Set([...command.matchAll(re)].map((m) => m[1]).filter((x): x is string => !!x && x !== 'progress.json'))]
+  return [...new Set([...normPath(command).matchAll(re)].map((m) => m[1]).filter((x): x is string => !!x && x !== 'progress.json'))]
 }
 
 /**
