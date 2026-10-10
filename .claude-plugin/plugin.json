@@ -1,6 +1,6 @@
 {
   "name": "session-progress",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Live progress of your work packages above the prompt, per session — and a panel of every open session, with the decisions waiting on you first.",
   "types": "./types/index.d.ts",
   "author": {
@@ -14,5 +14,10 @@
     "worktree",
     "status",
     "dashboard"
-  ]
+  ],
+  "homepage": "https://github.com/oguzhanselamoglu/session-progress",
+  "repository": "https://github.com/oguzhanselamoglu/session-progress",
+  "supportUrl": "https://github.com/oguzhanselamoglu/session-progress/issues",
+  "documentationUrl": "https://github.com/oguzhanselamoglu/session-progress#readme",
+  "privacyPolicyUrl": "https://github.com/oguzhanselamoglu/session-progress/blob/main/PRIVACY.md"
 }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2 — 2026-10-10
+
+- Listing links (homepage, repository, support, documentation) and a privacy statement (`PRIVACY.md`).
+
 ## 0.3.1 — 2026-10-10
 
 - Directory listing: an icon, and a README section on what the plugin reads and writes and what its hooks do.
