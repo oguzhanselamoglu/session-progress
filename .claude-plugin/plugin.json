@@ -1,0 +1,18 @@
+{
+  "name": "session-progress",
+  "version": "0.2.0",
+  "description": "Live progress of your work packages above the prompt, per session — and a panel of every open session, with the decisions waiting on you first.",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "Oguzhan Selamoglu"
+  },
+  "license": "MIT",
+  "keywords": [
+    "progress",
+    "sessions",
+    "multi-session",
+    "worktree",
+    "status",
+    "dashboard"
+  ]
+}
