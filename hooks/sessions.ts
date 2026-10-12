@@ -1,5 +1,5 @@
 // Pure core (sessions): record validation, package from a tool call, openness, labels, panel ordering. Never touches `$`.
-import type { Decision, PackageRead, ProgressDoc, SessionRecord } from '../types'
+import type { AgentRun, Decision, PackageRead, ProgressDoc, SessionRecord } from '../types'
 import { isComplete, waitingWho, waitingWhat } from './model'
 
 /** A session whose last signal is older than this (or that ended) counts as closed. The heartbeat is every 30 s. */
@@ -71,6 +71,21 @@ function decisionOf(v: unknown): Decision | null {
   return { kind: v.kind as Decision['kind'], tool: v.tool, since: v.since }
 }
 
+const AGENT_STATUSES: readonly string[] = ['running', 'done', 'failed']
+
+/** A record's `agents`: malformed entries are dropped (never the whole session); a record written by 0.3.x has none. */
+function agentsOf(v: unknown): AgentRun[] {
+  if (!Array.isArray(v)) return []
+  const out: AgentRun[] = []
+  for (const a of v) {
+    if (!isObj(a) || typeof a.id !== 'string' || typeof a.description !== 'string' || !AGENT_STATUSES.includes(a.status as string)) continue
+    const run: AgentRun = { id: a.id, description: a.description, status: a.status as AgentRun['status'] }
+    if (typeof a.agentId === 'string') run.agentId = a.agentId
+    out.push(run)
+  }
+  return out
+}
+
 /** The dialog a tool opens on the person: its own question or plan, else a permission prompt for it. */
 export function decisionFor(tool: string, since: string): Decision {
   const kind = tool === 'AskUserQuestion' ? 'question' : tool === 'ExitPlanMode' ? 'plan' : 'permission'
@@ -92,7 +107,14 @@ export function parseSession(text: string): SessionRecord | null {
   if (typeof raw.busy !== 'boolean' || typeof raw.ended !== 'boolean') return null
   if (raw.bindSource !== null && raw.bindSource !== 'auto' && raw.bindSource !== 'manual') return null
   if (raw.checkout !== undefined && !strOrNull(raw.checkout)) return null
-  return { ...(raw as SessionRecord), checkout: (raw.checkout as string | null | undefined) ?? null, decision: decisionOf(raw.decision) }
+  return {
+    ...(raw as SessionRecord),
+    checkout: (raw.checkout as string | null | undefined) ?? null,
+    decision: decisionOf(raw.decision),
+    branch: typeof raw.branch === 'string' && raw.branch ? raw.branch : null,
+    worktree: raw.worktree === true,
+    agents: agentsOf(raw.agents),
+  }
 }
 
 export function newSession(id: string, cwd: string, nowIso: string, checkout: string | null = null): SessionRecord {
@@ -110,7 +132,59 @@ export function newSession(id: string, cwd: string, nowIso: string, checkout: st
     package: null,
     bindSource: null,
     decision: null,
+    branch: null,
+    worktree: false,
+    agents: [],
   }
+}
+
+// ── Subagents ──────────────────────────────────────────────────────────────────────────────────────────────────
+/** The most subagents a record keeps (running ones always stay; the oldest finished ones go first). */
+export const AGENTS_MAX = 20
+
+const capAgents = (list: readonly AgentRun[]): AgentRun[] => {
+  const out = [...list]
+  while (out.length > AGENTS_MAX) {
+    const i = out.findIndex((a) => a.status !== 'running')
+    out.splice(i >= 0 ? i : 0, 1)
+  }
+  return out
+}
+
+/** A subagent started (its tool call is about to run). */
+export const startAgent = (list: readonly AgentRun[] | undefined, id: string, description: string): AgentRun[] =>
+  capAgents([...(list ?? []).filter((a) => a.id !== id), { id, description, status: 'running' }])
+
+/**
+ * The Agent tool call ended: refused or failed → `failed`; launched in the background (`async_launched`, its `agentId` kept for
+ * SubagentStop) → still `running`; otherwise `done`.
+ */
+export function settleAgent(list: readonly AgentRun[] | undefined, id: string, ran: { deny?: unknown; isError?: boolean; result?: unknown }): AgentRun[] {
+  const result = isObj(ran.result) ? ran.result : {}
+  const background = result.status === 'async_launched' || result.status === 'remote_launched'
+  return (list ?? []).map((a) => {
+    if (a.id !== id) return a
+    if (ran.deny !== undefined || ran.isError) return { ...a, status: 'failed' }
+    if (background && typeof result.agentId === 'string') return { ...a, agentId: result.agentId }
+    return { ...a, status: 'done' }
+  })
+}
+
+/** SubagentStop: a background subagent with that id ended. `null` when none matches (nothing to write). */
+export function stopAgent(list: readonly AgentRun[] | undefined, agentId: string): AgentRun[] | null {
+  if (!(list ?? []).some((a) => a.agentId === agentId && a.status === 'running')) return null
+  return (list ?? []).map((a) => (a.agentId === agentId && a.status === 'running' ? { ...a, status: 'done' } : a))
+}
+
+/** A new turn: the finished subagents of the last one go, running ones stay. `null` when nothing changes. */
+export function pruneAgents(list: readonly AgentRun[] | undefined): AgentRun[] | null {
+  const kept = (list ?? []).filter((a) => a.status === 'running')
+  return kept.length === (list ?? []).length ? null : kept
+}
+
+export function agentSummary(list: readonly AgentRun[] | undefined): { running: AgentRun[]; done: number; failed: number } {
+  const all = list ?? []
+  return { running: all.filter((a) => a.status === 'running'), done: all.filter((a) => a.status === 'done').length, failed: all.filter((a) => a.status === 'failed').length }
 }
 
 /** Open: not ended and the last signal within `OPEN_MS` — a time far in the FUTURE (a clock set back) does not count as open either. */
@@ -202,7 +276,9 @@ export function organizeSessions(
       continue
     }
     const doc = rec.package ? (docs.get(rec.package) ?? null) : null
-    const status: SessionStatus = rec.decision || docWaits(doc) ? 'user' : rec.busy ? 'busy' : 'idle'
+    // A subagent still running in the background is work going on, even between turns.
+    const working = rec.busy || (rec.agents ?? []).some((a) => a.status === 'running')
+    const status: SessionStatus = rec.decision || docWaits(doc) ? 'user' : working ? 'busy' : 'idle'
     rows.push({ rec, isSelf, doc, status })
   }
   const rank = (r: SessionRow): number => (r.status === 'user' ? 0 : r.isSelf ? 1 : 2)

@@ -36,6 +36,24 @@ band then shows it. Do not write another session's package file; one package has
   `"who": "user"`). The band turns amber and the sessions panel lists the session first. Set it back when the user answers.
 - **Finish:** mark the last phase `done`. A completed package is never auto-bound again, so a new piece of work gets a new package.
 
+### Keep the band honest
+
+The band shows the current phase and who it waits on, so the file must say what is happening **now**:
+
+- **Unplanned work gets its own phase.** A fix round after a review, a long verification, a rebase that takes a while: insert a phase
+  for it (where it happens in the order) instead of hiding it in another phase's `note`. Otherwise the band sits on a phase that is
+  not what is going on.
+- **`waiting-user` only while the person must act.** Use it (or `waitingOn` with `"who": "user"`) while the next move is theirs: a
+  decision, an approval, starting something only they can start. Once they have acted and the work is with someone else (another
+  tool, a reviewer, a CI run), move on: that phase becomes `waiting-external` (or `active`) with `waitingOn` naming who it waits on.
+  If one step mixes both, split it into two phases ("Start the review" for the person, then "Review" for the reviewer).
+- **`done` only when it is done.** Mark a phase `done` (and set `finishedAt`) after the work has really happened, not when you plan
+  it or write the commit that announces it. If the file must be committed before a last step runs, leave that step out of the file
+  or keep it `pending` and note it, rather than claiming it ahead of time.
+
+If the plugin tells you a file you wrote does not match the schema, fix that file right away: the band and the panels cannot show a
+package whose file does not match.
+
 Take times from the clock (`date -u +%Y-%m-%dT%H:%M:%SZ`), never estimate them.
 
 Write `title`, phase titles, `note` and `waitingOn.what` in the language the user speaks with you (Turkish in a Turkish

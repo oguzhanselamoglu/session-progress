@@ -42,12 +42,17 @@ export function session(over: Partial<SessionRecord> & { id: string }): SessionR
     package: null,
     bindSource: null,
     decision: null,
+    branch: null,
+    worktree: false,
+    agents: [],
     ...over,
   }
 }
 
 export type FakeRepo = {
   toasts: string[]
+  /** Panes open now (by id): `ui.open` adds, `ui.close` removes; a test closes one by hand to act as the person. */
+  panes: Set<string>
   /** A "tool" writing a file: content + a new modification time (Bash binding tests). */
   touch(path: string, text: string): void
   /** Set a file's modification time by hand (stale record tests). */
@@ -81,6 +86,12 @@ export function fakeRepo(
     store?: Record<string, unknown>
     /** A changeable session id (the id changes after `/clear`). */
     idRef?: { id: string }
+    /** Holds every tool call open after `onTool` ran: `entered` is called, then the call waits for `wait` (a hook firing mid-call). */
+    gate?: { entered: () => void; wait: Promise<void> }
+    /** Answers the engine's question dialog (`$.ui.ask` runs as an AskUserQuestion call): the label chosen, or `null` to dismiss it. */
+    answer?: (question: string, labels: string[]) => string | null
+    /** Questions put to the person through the dialog, collected. */
+    asked?: string[]
   } = {},
 ): FakeRepo {
   if (!opts.bare) files['/repo/docs/packages/README.md'] ??= '# packages'
@@ -149,13 +160,37 @@ export function fakeRepo(
   })
   on('session.start', () => ({ cwd: '/repo' }) as never)
   on('session.end', () => ({ sessionId: sid ?? '' }) as never)
-  on('ui.open', () => ({ value: { isPlaced: true } }) as never)
+  const panes = new Set<string>()
+  on('ui.open', ($, e) => {
+    panes.add(e.id)
+    return { value: { isPlaced: true } } as never
+  })
+  on('ui.close', ($, e) => {
+    panes.delete(e.id)
+    return { value: undefined } as never
+  })
+  on('ui.panes', () => ({ value: [...panes].map((id) => ({ id, title: id, isShown: true })) }) as never)
   on('turn.start', ($, e) => ({ turnId: e.turnId }) as never)
   on('turn.complete', () => ({ text: 'ok' }) as never)
   // Classic events have no settings hook beneath in a test: this is the bottom (no classic hook answers).
   on('classic.PermissionRequest', () => ({}) as never)
-  on('tool.call', ($, e) => {
+  on('classic.SubagentStop', () => ({}) as never)
+  on('classic.PostToolUse', () => ({}) as never)
+  on('tool.call', async ($, e) => {
     opts.onTool?.(e as unknown as Record<string, unknown>, repo)
+    if (opts.gate) {
+      opts.gate.entered()
+      await opts.gate.wait
+    }
+    if (e.tool === 'AskUserQuestion' && opts.answer) {
+      const q = (e as unknown as { questions: { question: string; options: { label: string }[] }[] }).questions[0]
+      if (q) {
+        opts.asked?.push(q.question)
+        const label = opts.answer(q.question, q.options.map((o) => o.label))
+        if (label === null) return { deny: 'dismissed' } as never
+        return { result: { questions: [q], answers: { [q.question]: label } } } as never
+      }
+    }
     return (opts.toolResult ?? { result: 'ok' }) as never
   })
   on('ui.toast', ($, e) => {
@@ -168,6 +203,7 @@ export function fakeRepo(
   })
   const repo: FakeRepo = {
     toasts,
+    panes,
     touch(path, text) {
       files[path] = text
       mtime[path] = clock++

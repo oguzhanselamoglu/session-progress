@@ -94,6 +94,23 @@ export type SessionRecord = {
   bindSource: 'auto' | 'manual' | null;
   /** A dialog open on the person right now (absent in records written by 0.3.x, which read as `null`). */
   decision?: Decision | null;
+  /** The checkout's branch, read from git's `HEAD` (`null` when detached or unknown; absent in 0.3.x records). */
+  branch?: string | null;
+  /** Whether the checkout is a linked worktree, not the main checkout (absent in 0.3.x records). */
+  worktree?: boolean;
+  /** Subagents this session started: running ones, and the finished ones of the current turn (absent in 0.3.x records). */
+  agents?: AgentRun[];
+};
+
+/** One subagent a session started. Only the short task label is kept, never the prompt given to it. */
+export type AgentRun = {
+  /** The tool call that started it. */
+  id: string;
+  /** The 3–5 word task label the model gave it. */
+  description: string;
+  status: 'running' | 'done' | 'failed';
+  /** The id of an agent running in the background (its end arrives as SubagentStop). */
+  agentId?: string;
 };
 
 /**

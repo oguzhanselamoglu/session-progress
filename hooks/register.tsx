@@ -1,14 +1,16 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Decision, PackageRead, ProgressDoc, ProjectConfig, SessionRecord, Snapshot } from '../types'
+import type { AgentRun, Decision, PackageRead, ProgressDoc, ProjectConfig, SessionRecord, Snapshot } from '../types'
 import { DICTS, LANGS, SUB_ALIASES, resolveLang, type Dict, type Lang } from './i18n'
 import {
   STATUS_VIEW,
   auditLine,
   bar,
+  branchFromHead,
   currentPhase,
   focusOf,
+  gitDirOf,
   isComplete,
   isStale,
   mainRootFromGitFile,
@@ -17,6 +19,7 @@ import {
   packageElapsed,
   parseDoc,
   phaseDuration,
+  schemaNote,
   progressOf,
   signature,
   transitions,
@@ -28,6 +31,7 @@ import {
 import {
   DEFAULT_PACKAGES_DIR,
   OPEN_MS,
+  agentSummary,
   autoBind,
   boundRead,
   candidatePackages,
@@ -43,6 +47,10 @@ import {
   packageFromPath,
   packageKey,
   parseSession,
+  pruneAgents,
+  settleAgent,
+  startAgent,
+  stopAgent,
   segmentOf,
   sessionsDir,
   snippetOf,
@@ -54,6 +62,8 @@ const SESSIONS_PANE = 'session-progress-sessions'
 /** Per-project settings file, relative to the checkout root. */
 const CONFIG_FILE = '.claude/session-progress.json'
 const QUICK_MS = 30_000
+/** Every 5 s only the session records are read again: another session's dialog or status reaches this one within seconds. */
+const SESSIONS_MS = 5_000
 const FULL_MS = 5 * 60_000
 /** Write tools that carry the target path directly. */
 const PATH_TOOLS: ReadonlySet<string> = new Set(['Write', 'Edit', 'NotebookEdit'])
@@ -99,6 +109,15 @@ const baseName = (path: string): string => normPath(path).replace(/\/+$/, '').sp
 /** Absolute path, POSIX (`/x`) or Windows (`C:/x` once normalised). */
 const isAbsolute = (path: string): boolean => /^([A-Za-z]:)?\//.test(normPath(path))
 const owner = (who: string): string => ownerLabel(who, t(), ownerLabels)
+/** The subagents line: running / done / failed and the running ones' task labels; `null` without subagents. */
+const agentsText = (agents: readonly AgentRun[] | undefined): { head: string; names: string } | null => {
+  if (!agents?.length) return null
+  const s = agentSummary(agents)
+  const a = t().a
+  const parts = [a.running(s.running.length), a.done(s.done)]
+  if (s.failed) parts.push(a.failed(s.failed))
+  return { head: `⑂ ${a.label}: ${parts.join(' · ')}`, names: s.running.map((x) => x.description).join(', ') }
+}
 const decisionText = (x: Decision): string => (x.kind === 'permission' ? t().dec.permission(x.tool) : t().dec[x.kind])
 
 /** Known `progress.json` paths (root → path); renewed by a full scan, only these are read by a quick refresh. */
@@ -129,6 +148,24 @@ let sessionSeen: Record<string, [string, string]> | null = null
 let openDialog: string | null = null
 /** Told once when the record file could not be written. */
 let writeWarned = false
+/** Bash calls that name a package file, while they run: tool_use_id → the files' modification times before the call (PostToolUse). */
+const writing = new Map<string, Record<string, number>>()
+/**
+ * Record files at the last read: name → modification time and record. The 5 s pass reads a file again only when its time moved; the
+ * 30 s refresh reads every open one.
+ */
+let recordCache = new Map<string, { mtimeMs: number; rec: SessionRecord | null }>()
+/** The open record files' names and times (+ the closed count) at the last read: unchanged → the 5 s pass draws nothing again. */
+let recordSig = ''
+/** The checkout's branch (`null` when detached) and whether it is a linked worktree, from git's own files at each full scan. */
+let liveBranch: string | null = null
+let isWorktree = false
+/**
+ * The sessions panel as this module last left it: opened (by the command or unasked) and, once the person closed it, never opened
+ * unasked again in this load.
+ */
+let sessionsPaneOpen = false
+let sessionsPaneDismissed = false
 /** The last full scan's error (discovery or project config), carried by quick refreshes. */
 let lastScanError: string | null = null
 
@@ -186,6 +223,13 @@ async function scan($: Env): Promise<string | null> {
   const gitText = gitStat.kind === 'file' ? await $.fs.read(`${cwdRoot}/.git`) : null
   const main = mainRootFromGitFile(cwdRoot, typeof gitText === 'string' ? gitText : null)
   mainRoot = main
+  isWorktree = main !== cwdRoot
+  try {
+    const head = await $.fs.read(`${gitDirOf(cwdRoot, typeof gitText === 'string' ? gitText : null)}/HEAD`)
+    liveBranch = typeof head === 'string' ? branchFromHead(head) : null
+  } catch {
+    liveBranch = null
+  }
   const configError = await loadConfig($, main)
   const found = await discoverRoots($, main)
   roots = found
@@ -243,29 +287,65 @@ async function discoverRoots($: Env, main: string): Promise<string[]> {
 /**
  * Session records (broken or unreadable ones are skipped — another session's half-written file never breaks the panel). A record whose
  * file has not been written for longer than `OPEN_MS` (+1 min of slack) counts as closed WITHOUT being read: records are never deleted,
- * they pile up, and reading them all every 30 s would be costly.
+ * they pile up, and reading them all would be costly. `cached`: a file whose modification time did not move since the last read is not
+ * read again (the 5 s pass). `sig` names the open files and their times, to tell whether anything changed.
  */
-async function readSessions($: Env, now: number): Promise<{ records: SessionRecord[]; closedUnread: number }> {
-  if (!mainRoot || !registryOn) return { records: [], closedUnread: 0 }
+async function readSessions($: Env, now: number, cached = false): Promise<{ records: SessionRecord[]; closedUnread: number; sig: string }> {
+  if (!mainRoot || !registryOn) return { records: [], closedUnread: 0, sig: '' }
   const dir = sessionsDir(mainRoot)
-  if (!(await $.fs.exists(dir))) return { records: [], closedUnread: 0 }
+  let entries: readonly { name: string; kind: string; mtimeMs: number }[]
+  try {
+    entries = await $.fs.list(dir)
+  } catch {
+    return { records: [], closedUnread: 0, sig: '' } // no records yet
+  }
   const out: SessionRecord[] = []
+  const next = new Map<string, { mtimeMs: number; rec: SessionRecord | null }>()
+  const parts: string[] = []
   let closedUnread = 0
-  for (const entry of await $.fs.list(dir)) {
+  for (const entry of entries) {
     if (entry.kind !== 'file' || !entry.name.endsWith('.json')) continue
     if (now - entry.mtimeMs > OPEN_MS + 60_000) {
       closedUnread++
       continue
     }
-    try {
-      const text = await $.fs.read(`${dir}/${entry.name}`)
-      const rec = typeof text === 'string' ? parseSession(text) : null
-      if (rec) out.push(rec)
-    } catch {
-      // skip
+    parts.push(`${entry.name}@${entry.mtimeMs}`)
+    const hit = recordCache.get(entry.name)
+    let rec: SessionRecord | null = null
+    if (cached && hit && hit.mtimeMs === entry.mtimeMs) {
+      rec = hit.rec
+    } else {
+      try {
+        const text = await $.fs.read(`${dir}/${entry.name}`)
+        rec = typeof text === 'string' ? parseSession(text) : null
+      } catch {
+        // skip — a half-written file is read again once its time moves
+      }
     }
+    next.set(entry.name, { mtimeMs: entry.mtimeMs, rec })
+    if (rec) out.push(rec)
   }
-  return { records: out, closedUnread }
+  recordCache = next
+  return { records: out, closedUnread, sig: `${closedUnread}|${parts.join(',')}` }
+}
+
+/** The 5 s pass: only the session records (one listing; a record is read only when its file changed), then the waiting alerts. */
+function refreshSessions($: Env): Promise<void> {
+  queue = queue.then(() => refreshSessionsNow($)).catch(() => undefined)
+  return queue
+}
+
+async function refreshSessionsNow($: Env): Promise<void> {
+  await trackSessionsPane($)
+  if (!mainRoot || !registryOn) return
+  const now = await $.clock.now()
+  const { records, closedUnread, sig } = await readSessions($, now, true)
+  if (sig === recordSig) return
+  recordSig = sig
+  const snap = await read($, snapshot)
+  if (!snap) return
+  await update($, snapshot, () => ({ ...snap, sessions: records, closedSessions: closedUnread }))
+  await notifyElsewhere($, records, snap.reads, now)
 }
 
 async function readAll($: Env, scanError: string | null): Promise<void> {
@@ -280,7 +360,8 @@ async function readAll($: Env, scanError: string | null): Promise<void> {
     }
   }
   const now = await $.clock.now()
-  const { records: sessions, closedUnread } = await readSessions($, now)
+  const { records: sessions, closedUnread, sig } = await readSessions($, now)
+  recordSig = sig
   const folder = folderExists === null ? null : { dir: packagesDir, exists: folderExists }
   const snap: Snapshot = { readAt: now, cwdRoot, reads, error: scanError, sessions, closedSessions: closedUnread, folder }
   await update($, snapshot, () => snap)
@@ -301,6 +382,71 @@ async function notifyElsewhere($: Env, sessions: readonly SessionRecord[], reads
     if (decision) $.ui.toast(t().n.elsewhere(where, decisionText(decision)), { timeoutMs: 8000 })
     if (doc) $.ui.toast(t().n.elsewhere(where, `${doc.title}: ${waitingWhat(doc)}`), { timeoutMs: 8000 })
   }
+  if (alerts.length) await autoOpenSessions($)
+}
+
+const paneShown = async ($: Env, id: string): Promise<boolean> => (await $.ui.panes()).some((p) => p.id === id)
+
+/**
+ * Another session started waiting on the person: the sessions panel opens by itself (on a wide enough window; a narrow one keeps it
+ * waiting) — unless the person closed it in this session.
+ */
+async function autoOpenSessions($: Env): Promise<void> {
+  if (sessionsPaneDismissed) return
+  try {
+    if (await paneShown($, SESSIONS_PANE)) return
+    await $.ui.open({ id: SESSIONS_PANE, title: t().c.sessionsTitle })
+    sessionsPaneOpen = true
+  } catch {
+    // the panel is a convenience; the toast already told
+  }
+}
+
+/** The sessions panel this module opened is gone: the person closed it — never opened unasked again in this load. */
+async function trackSessionsPane($: Env): Promise<void> {
+  if (!sessionsPaneOpen) return
+  try {
+    if (!(await paneShown($, SESSIONS_PANE))) {
+      sessionsPaneOpen = false
+      sessionsPaneDismissed = true
+    }
+  } catch {
+    // unknown: asked again on the next pass
+  }
+}
+
+/**
+ * The package files a finished tool call wrote: a Write/Edit/NotebookEdit target that is a `progress.json`, or the package files a Bash
+ * command names whose modification time moved during the call (measured before it by the binding hook).
+ */
+async function writtenPackageFiles($: Env, tool: string, input: unknown, toolUseId: string): Promise<string[]> {
+  const args = typeof input === 'object' && input !== null ? (input as Record<string, unknown>) : {}
+  if (PATH_TOOLS.has(tool)) {
+    const raw = args['file_path'] ?? args['notebook_path']
+    const path = typeof raw === 'string' ? normPath(raw) : null
+    return path && isAbsolute(path) && packageFromPath(path, segment) ? [path] : []
+  }
+  const before = tool === 'Bash' ? writing.get(toolUseId) : undefined
+  if (!before) return []
+  const after = await mtimesOf($, Object.keys(before))
+  return Object.keys(after).filter((path) => (after[path] ?? -1) >= 0 && after[path] !== before[path])
+}
+
+/** One note per package file the call wrote that does not match the schema (unreadable counts too); none when all match. */
+async function schemaNotes($: Env, tool: string, input: unknown, toolUseId: string): Promise<string[]> {
+  const notes: string[] = []
+  for (const path of await writtenPackageFiles($, tool, input, toolUseId)) {
+    let error: string | null
+    try {
+      const text = await $.fs.read(path)
+      const parsed = parseDoc(typeof text === 'string' ? text : '', DICTS.en, schemaAliases)
+      error = 'error' in parsed ? parsed.error : null
+    } catch (err) {
+      error = DICTS.en.v.unreadable((err as Error).message)
+    }
+    if (error) notes.push(schemaNote(path, error))
+  }
+  return notes
 }
 
 /** Opens (or replaces) the dialog this session has open on the person, in its record at once (other sessions read it). */
@@ -346,7 +492,10 @@ function refresh($: Env, full: boolean): Promise<void> {
 async function refreshNow($: Env, full: boolean): Promise<void> {
   try {
     // A quick refresh keeps the last scan's error (a broken config file stays reported until it is fixed and scanned again).
-    if (full || known.length === 0) lastScanError = await scan($)
+    if (full || known.length === 0) {
+      lastScanError = await scan($)
+      await syncLocation($)
+    }
     await readAll($, lastScanError)
   } catch (e) {
     await update($, snapshot, (s) => ({
@@ -359,6 +508,13 @@ async function refreshNow($: Env, full: boolean): Promise<void> {
       folder: s?.folder ?? null,
     }))
   }
+}
+
+/** The checkout, its branch and whether it is a worktree, in this session's record — written only when one changed (a `git checkout`). */
+function syncLocation($: Env): Promise<void> {
+  return writeSelf($, (r) =>
+    r.branch === liveBranch && r.worktree === isWorktree && r.checkout === cwdRoot ? null : { ...r, branch: liveBranch, worktree: isWorktree, checkout: cwdRoot },
+  )
 }
 
 /** Changes this session's own record (in order) and writes its file; nothing is written when `patch` returns `null`. */
@@ -420,7 +576,7 @@ function markEnded($: Env, sessionId: string): Promise<void> {
       const cur = await read($, self)
       const target = cur?.id === sessionId ? cur : await loadRecord($, sessionId)
       if (!target) return
-      const done = { ...target, busy: false, ended: true, lastSeen: nowIso, decision: null }
+      const done = { ...target, busy: false, ended: true, lastSeen: nowIso, decision: null, agents: [] }
       if (cur?.id === sessionId) await update($, self, () => done)
       if (mainRoot && registryOn) await $.fs.write(`${sessionsDir(mainRoot)}/${sessionId}.json`, `${JSON.stringify(done, null, 2)}\n`)
     })
@@ -437,7 +593,7 @@ async function initSelf($: Env): Promise<void> {
   if (!rec || rec.id !== id) rec = (await loadRecord($, id)) ?? newSession(id, cwd, nowIso, cwdRoot)
   const base = rec
   await update($, self, () => base)
-  await writeSelf($, (r, now) => ({ ...r, cwd, checkout: cwdRoot, lastSeen: now, ended: false, busy: false }))
+  await writeSelf($, (r, now) => ({ ...r, cwd, checkout: cwdRoot, branch: liveBranch, worktree: isWorktree, lastSeen: now, ended: false, busy: false }))
 }
 
 /** Modification times of the given paths (missing = -1). */
@@ -497,6 +653,11 @@ async function runProgress($: Env, args: string): Promise<{ text: string }> {
     await writeSelf($, (r) => ({ ...r, label }))
     return { text: label ? c.named(label) : c.nameCleared }
   }
+  // The bare command toggles the panel; `refresh` always (re)opens it.
+  if (sub === '' && (await paneShown($, PANE))) {
+    await $.ui.close({ id: PANE })
+    return { text: c.paneClosed }
+  }
   await refresh($, action === 'refresh' || known.length === 0)
   const opened = await $.ui.open({ id: PANE, title: c.paneTitle })
   return { text: opened.isPlaced ? c.paneOpened : c.paneNotPlaced }
@@ -514,9 +675,10 @@ Commit this folder with the project.
 const CLAUDE_FILES = ['CLAUDE.md', '.claude/CLAUDE.md']
 
 /**
- * Adds the "track multi-step work with session-progress" line (in the language in use) to the checkout's EXISTING CLAUDE.md, so Claude
- * tracks work there without being asked. Appended, never overwritten; a file that already mentions session-progress is left as it is
- * (the project's own rule, or the line added before). Without a CLAUDE.md nothing is created: the answer is the tip with the line.
+ * Offers the "track multi-step work with session-progress" line (in the language in use) for the checkout's EXISTING CLAUDE.md, so Claude
+ * tracks work there without being asked. CLAUDE.md is the person's own instruction file: the line is added only after they say yes in a
+ * dialog that shows it word for word. Appended, never overwritten; a file that already mentions session-progress is left as it is (the
+ * project's own rule, or the line added before). Without a CLAUDE.md nothing is created; declined, or nobody to ask (`-p`): the tip.
  */
 async function addClaudeLine($: Env, root: string): Promise<{ text: string; changed: boolean }> {
   const c = t().c
@@ -527,6 +689,13 @@ async function addClaudeLine($: Env, root: string): Promise<{ text: string; chan
       const text = await $.fs.read(path)
       const current = typeof text === 'string' ? text : ''
       if (/session-progress/i.test(current)) return { text: c.claudePresent(name), changed: false }
+      let answer: string
+      try {
+        answer = await $.ui.ask(c.claudeAsk(name, c.claudeLine), { options: [c.claudeYes, c.claudeNo], header: 'CLAUDE.md' })
+      } catch {
+        return { text: c.claudeTip(c.claudeLine), changed: false } // dismissed, or no one to ask
+      }
+      if (answer !== c.claudeYes) return { text: c.claudeDeclined(name, c.claudeLine), changed: false }
       const sep = current === '' || current.endsWith('\n\n') ? '' : current.endsWith('\n') ? '\n' : '\n\n'
       await $.fs.write(path, `${current}${sep}${c.claudeLine}\n`)
       return { text: c.claudeAdded(name, c.claudeLine), changed: true }
@@ -597,10 +766,19 @@ async function setLanguage($: Env, arg: string): Promise<{ text: string }> {
   return { text: DICTS[lang].c.languageNow }
 }
 
+/** The sessions command toggles its panel. Closing it by command also stops it opening unasked in this session; opening allows it again. */
 async function runSessions($: Env): Promise<{ text: string }> {
-  await refresh($, true)
   const c = t().c
+  if (await paneShown($, SESSIONS_PANE)) {
+    await $.ui.close({ id: SESSIONS_PANE })
+    sessionsPaneOpen = false
+    sessionsPaneDismissed = true
+    return { text: c.sessionsClosed }
+  }
+  await refresh($, true)
   const opened = await $.ui.open({ id: SESSIONS_PANE, title: c.sessionsTitle })
+  sessionsPaneOpen = true
+  sessionsPaneDismissed = false
   return { text: opened.isPlaced ? c.sessionsOpened : c.sessionsNotPlaced }
 }
 
@@ -633,6 +811,7 @@ export const register: Register = (on) => {
       void refresh($, false)
     })
     $.clock.every(FULL_MS, () => void refresh($, true))
+    $.clock.every(SESSIONS_MS, () => void refreshSessions($))
     return started
   })
 
@@ -646,7 +825,7 @@ export const register: Register = (on) => {
     // A turn starting is sure proof the session lives: an "ended" left by mistake is taken back.
     // A new prompt means no dialog is open any more (a safety net for one whose end was never seen).
     openDialog = null
-    await writeSelf($, (r, now) => ({ ...r, busy: true, ended: false, lastSeen: now, snippet: r.snippet ?? snippetOf(e.text), decision: null }))
+    await writeSelf($, (r, now) => ({ ...r, busy: true, ended: false, lastSeen: now, snippet: r.snippet ?? snippetOf(e.text), decision: null, agents: pruneAgents(r.agents) ?? r.agents ?? [] }))
     return result
   })
 
@@ -673,7 +852,13 @@ export const register: Register = (on) => {
     if (names.length && roots.length === 0) await scan($)
     const paths = names.flatMap((n) => roots.map((root) => `${root}/${packagesDir}/${n}/progress.json`))
     const before: Record<string, number> = paths.length ? await mtimesOf($, paths) : {}
-    const ran = await next(e)
+    if (paths.length) writing.set(e.tool_use_id, before)
+    let ran: Awaited<ReturnType<typeof next>>
+    try {
+      ran = await next(e)
+    } finally {
+      writing.delete(e.tool_use_id)
+    }
     if (ran.deny !== undefined || ran.isError) return ran // a refused or failed write never binds
     if (direct) {
       await bindIfLive($, direct, directPath && isAbsolute(directPath) ? directPath : null)
@@ -710,7 +895,22 @@ export const register: Register = (on) => {
 
   // A question or a plan to approve is open for the whole call; any other call that ends closes its own prompt (allowed or refused —
   // there is no event for the answer itself, so a long command that was allowed still reads as waiting until it ends).
+  // A subagent is tracked from its call (running) to its end: the call's result, or SubagentStop for one sent to the background. Only
+  // its short task label is kept, never its prompt.
   on('tool.call', async ($, e, next) => {
+    if (e.tool === 'Agent') {
+      const id = e.tool_use_id
+      await writeSelf($, (r) => ({ ...r, agents: startAgent(r.agents, id, e.description) }))
+      let ran: Awaited<ReturnType<typeof next>>
+      try {
+        ran = await next(e)
+      } catch (err) {
+        await writeSelf($, (r) => ({ ...r, agents: settleAgent(r.agents, id, { isError: true }) }))
+        throw err
+      }
+      await writeSelf($, (r) => ({ ...r, agents: settleAgent(r.agents, id, ran) }))
+      return ran
+    }
     if (e.tool === 'AskUserQuestion' || e.tool === 'ExitPlanMode') {
       await openDecision($, e.tool)
       try {
@@ -723,6 +923,24 @@ export const register: Register = (on) => {
     if (openDialog === e.tool) await closeDecision($, e.tool)
     return ran
   }).catch(($, e, next) => next(e)) // a side job: its failure never blocks the tool call
+
+  // A package file this call just WROTE that does not match the schema: a short note for the model (the file's writer) so it fixes the
+  // file in the same turn. The tool's result is never changed; a file the call only read gets no note.
+  on('classic.PostToolUse', async ($, e, next) => {
+    const result = await next(e)
+    const notes = await schemaNotes($, e.tool_name, e.tool_input, e.tool_use_id)
+    return notes.length ? { ...result, additionalContext: [...(result.additionalContext ?? []), ...notes] } : result
+  }).catch(($, e, next) => next(e))
+
+  // A subagent sent to the background ended. Observe only: its result passes on untouched.
+  on('classic.SubagentStop', async ($, e, next) => {
+    const result = await next(e)
+    await writeSelf($, (r) => {
+      const agents = stopAgent(r.agents, e.agent_id)
+      return agents ? { ...r, agents } : null
+    })
+    return result
+  }).catch(($, e, next) => next(e))
 
   on('command.run', { command: ['progress', 'ilerleme'] }, async ($, e) => runProgress($, e.args))
   on('command.run', { command: ['sessions', 'oturumlar'] }, async ($) => runSessions($))
@@ -782,6 +1000,15 @@ export const register: Register = (on) => {
         </Box>,
       )
     }
+    const ag = agentsText(me?.agents)
+    if (ag) {
+      lines.push(
+        <Text key="ag">
+          <Text color="merged">{ag.head}</Text>
+          {ag.names ? <Text dimColor>  —  {ag.names}</Text> : null}
+        </Text>,
+      )
+    }
     // An error line only for a discovery error or THIS session's package file being broken (others lead the progress panel).
     const myError = me?.package ? errors.find((r) => packageFromPath(r.path, segment) === me.package) : undefined
     if (snap.error || myError) {
@@ -827,11 +1054,13 @@ export const register: Register = (on) => {
 
     if (focus) {
       const doc = focus.doc
+      // The package's own branch, else this session's live one when the package is in its checkout.
+      const branch = doc.branch ?? (focus.root === snap.cwdRoot ? me?.branch : null)
       const p = progressOf(doc)
       const who = waitingWho(doc)
       out.push(
         <Text key="h" bold color="claude">
-          {doc.title}{doc.branch ? `  (${doc.branch})` : ''}{mine && packageKey(focus, segment) === packageKey(mine, segment) ? '' : d.p.notBoundHere}
+          {doc.title}{branch ? `  (${branch})` : ''}{mine && packageKey(focus, segment) === packageKey(mine, segment) ? '' : d.p.notBoundHere}
         </Text>,
         <Box key="b">
           <Text color="success">{bar(p.percent, 24)}</Text>
@@ -987,9 +1216,19 @@ export const register: Register = (on) => {
       } else {
         body.push(<Text key={`t-${k}`} dimColor>{rec.package ? d.s.notFound(rec.package) : d.s.noPackage}</Text>)
       }
+      const ag = agentsText(rec.agents)
+      if (ag) {
+        body.push(
+          <Text key={`ag-${k}`}>
+            <Text color="merged">{ag.head}</Text>
+            {ag.names ? <Text dimColor>  —  {ag.names}</Text> : null}
+          </Text>,
+        )
+      }
       body.push(
         <Text key={`o-${k}`} dimColor>
           {labelOf(rec, d.s.sessionId)}{row.isSelf ? d.s.thisSession : ''}  ·  {baseName(rec.checkout ?? rec.cwd)}
+          {rec.branch ? `  ·  ⎇ ${rec.branch}` : ''}{rec.worktree ? ` (${d.s.worktree})` : ''}
         </Text>,
       )
       out.push(

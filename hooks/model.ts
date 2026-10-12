@@ -58,6 +58,13 @@ export function validate(raw: unknown, d: Dict = EN, aliases: readonly string[] 
   return null
 }
 
+/**
+ * The note the model gets when a `progress.json` it just wrote does not match the schema (always English: it is read by the model, not
+ * the person). It names the file and the first problem, so the writer fixes it in the same turn.
+ */
+export const schemaNote = (path: string, error: string): string =>
+  `session-progress: ${path} does not match the ${SCHEMA} schema (${error}). The band and panels cannot show this package until it does: fix the file now (the session-progress skill lists the fields).`
+
 /** Parses and validates a text. */
 export function parseDoc(text: string, d: Dict = EN, aliases: readonly string[] = []): { doc: ProgressDoc } | { error: string } {
   let raw: unknown
@@ -237,4 +244,22 @@ export function mainRootFromGitFile(root: string, gitFileText: string | null): s
 export function worktreeRootFromGitdir(text: string): string | null {
   const line = text.trim().replace(/\\/g, '/')
   return line.endsWith('/.git') ? line.slice(0, -'/.git'.length) : null
+}
+
+/**
+ * The git folder of a checkout: `<root>/.git` when `.git` is a folder (`gitFileText` null), else the `gitdir:` its `.git` file names
+ * (a worktree's `<main>/.git/worktrees/<name>`; a relative one is taken from the root).
+ */
+export function gitDirOf(root: string, gitFileText: string | null): string {
+  if (gitFileText === null) return `${root}/.git`
+  const m = /^gitdir:\s*(.+?)\s*$/m.exec(gitFileText)
+  const dir = m?.[1]?.replace(/\\/g, '/')
+  if (!dir) return `${root}/.git`
+  return /^([A-Za-z]:)?\//.test(dir) ? dir : `${root}/${dir.replace(/^\.\//, '')}`
+}
+
+/** The branch a `HEAD` file names (`ref: refs/heads/<branch>`); `null` when detached (a commit id) or unreadable. */
+export function branchFromHead(text: string): string | null {
+  const m = /^ref:\s*refs\/heads\/(.+?)\s*$/m.exec(text)
+  return m?.[1] ?? null
 }

@@ -1,21 +1,55 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 — 2026-10-12
 
-- **Open dialogs count as waiting on you.** A session showing a permission prompt, a question (AskUserQuestion) or a plan to approve
-  (ExitPlanMode) is marked waiting in its record at once: `/sessions` lists it first with what it asks (`permission: Bash`), and the
-  band's counter counts it, even when the session is bound to no package. The record keeps the dialog's kind and the tool's name,
-  never its input. There is no event for the answer itself: an allowed call reads as waiting until it ends.
+Sessions that wait on you are seen sooner and more often, other sessions are richer to look at, and package files stay valid.
+
+### What waits on you
+
+- **Open dialogs count as waiting.** A session showing a permission prompt, a question (AskUserQuestion) or a plan to approve
+  (ExitPlanMode) is marked waiting in its record at once: `/sessions` lists it first with what it asks (`permission: Bash`) and
+  the band's counter counts it, even when the session is bound to no package. There is no event for the answer itself, so an
+  allowed call reads as waiting until it ends.
 - **Notifications from other sessions.** A toast when another open session starts waiting on you (a dialog opens there, or its
-  package's decision moves to you); silent for what was already waiting when this session started looking. Other sessions are read
-  every 30 s, so a prompt answered sooner may pass without one.
-- Session records gain an optional `decision` field; records from 0.3.x read as before.
-- README: a "Using it" section — a list with tracking asked for, approval as a step, the `CLAUDE.md` line that makes it
-  automatic, several sessions, tips.
-- `/progress init` (`/ilerleme kur`) adds the line that makes tracking automatic ("Track multi-step work (3+ steps) with
-  session-progress.", in the language in use) to an existing `CLAUDE.md` or `.claude/CLAUDE.md`: appended, once, never when the
-  file already mentions session-progress, also when the packages folder was there already. It never creates a `CLAUDE.md`; without
-  one it prints the line as a tip.
+  package's decision moves to you); silent for what was already waiting when this session started looking.
+- **Within 5 s.** Session records are read every 5 s (a record whose file did not change is not read again; an idle pass is one
+  folder listing), so a dialog or a status change in one session reaches the others within seconds instead of 30 s.
+- **The sessions panel opens by itself** when another session starts waiting on you; once you close it, it stays closed in that
+  session. `/progress` and `/sessions` with no argument now toggle their panel (`/progress refresh` always opens).
+
+### What other sessions show
+
+- **Subagents.** Tracked from the Agent call to its end (the call's result, or SubagentStop for one sent to the background): the
+  band and the session's card show how many run, finished or failed and the running ones' task labels. A session whose subagent runs
+  in the background counts as working.
+- **Branch and worktree.** Each card shows the session's branch, read from git's own `HEAD` (no git process), marked when the
+  checkout is a worktree; a `git checkout` is seen at the next turn end. The progress panel shows it when the package names none.
+
+### Writing packages
+
+- **Schema feedback at write time.** When Claude writes a `progress.json` (Write, Edit, or a Bash command that changes it) that does
+  not match the schema, the plugin adds one line to Claude's context naming the file and the first problem, so the writer fixes it
+  in the same turn instead of the package showing as an error. A file only read gets no note.
+- **Skill: keep the band honest.** Unplanned work (a fix round, a long verification) gets its own phase instead of a note;
+  `waiting-user` only while the person must act, then `waiting-external` naming who it waits on (a step mixing both is split in
+  two); `done` only once the work has really happened.
+- **`/progress init` offers the `CLAUDE.md` line** that makes tracking automatic ("Track multi-step work (3+ steps) with
+  session-progress.", in the language in use) for an existing `CLAUDE.md` or `.claude/CLAUDE.md`: it shows the line word for word
+  in a question and appends it only when you say yes — once, never offered when the file already mentions session-progress. It
+  never creates a `CLAUDE.md`; declined, dismissed or without one, it prints the line as a tip.
+- **README: "Using it"** — a list with tracking asked for, approval as a step, the `CLAUDE.md` line, several sessions, tips.
+
+### What the plugin now does that 0.3.x did not
+
+- Hooks every tool call (`tool.call`) to see dialogs and subagents, plus `classic.PermissionRequest`, `classic.SubagentStop` and
+  `classic.PostToolUse`. None of them answers a prompt or changes, delays or blocks a call; SubagentStop's and PostToolUse's
+  results pass on untouched, except the one schema line PostToolUse adds for a package file Claude just wrote.
+- Reads the checkout's git `HEAD`.
+- Writes more into its own session record: the open dialog's kind and the tool's name (never its input), the branch, whether the
+  checkout is a worktree, and the subagents' short task labels and states (never their prompts). New fields are optional: records
+  from 0.3.x read as before, and 0.3.x reads the new ones.
+- Asks one question in the engine's own dialog (`/progress init`, before touching `CLAUDE.md`), and may open the sessions panel
+  unasked (see above).
 
 ## 0.3.2 — 2026-10-10
 
