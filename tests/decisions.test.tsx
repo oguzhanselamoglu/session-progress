@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { decisionFor, organizeSessions, othersWaitingOnUser, parseSession, waitingAlerts } from '../hooks/sessions'
+import { ANY_TOOL, decisionFor, organizeSessions, othersWaitingOnUser, parseSession, permissionToolFrom, waitingAlerts } from '../hooks/sessions'
 import type { PackageRead } from '../types'
 import { BAND, NOW, SESSIONS, TR_STORE, doc, fakeRepo, pkg, session, sessionFile, start, turnComplete, turnStart, writeProgress } from './fixture'
 
@@ -56,12 +56,12 @@ test('alerts: silent at the first pass; once per dialog opening; this session\'s
 })
 
 // ── Hooks ───────────────────────────────────────────────────────────────────────────────────────────────────
-test('permission prompt: in the record at once (tool name only, never its input), the hook does not answer; closed when that tool\'s call ends', async ($, on) => {
+test('permission prompt: from Claude Code\'s notice, in the record at once (tool name only), the notice passes on untouched; closed when that tool\'s call ends', async ($, on) => {
   mock.clock(on, { now: NOW })
   const repo = fakeRepo(on, {})
   await start($)
-  const answer = await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'cat secret.env' } } as never)
-  expect(answer, 'observe only: no decision is made for the person').toEqual({})
+  const answer = await $.classic.Notification({ notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' } as never)
+  expect(answer, 'observe only: the notice passes on as it was answered beneath').toEqual({})
   expect(repo.self()?.decision).toMatchObject({ kind: 'permission', tool: 'Bash' })
   expect(JSON.stringify(repo.self()), 'the command never reaches the record').not.toMatch(/secret/)
   await $.tool.call({ tool: 'Read', file_path: '/repo/x' } as never)
@@ -80,7 +80,7 @@ test('question and plan approval: open for the whole call, closed after; a turn 
   expect(during).toEqual(['question', 'plan'])
   expect(repo.self()?.decision).toBeNull()
   await turnStart($)
-  await $.classic.PermissionRequest({ tool_name: 'Edit', tool_input: {} } as never)
+  await $.classic.Notification({ notification_type: 'permission_prompt', message: 'Claude needs your permission to use Edit' } as never)
   expect(repo.self()?.decision?.tool).toBe('Edit')
   await turnComplete($)
   expect(repo.self()?.decision).toBeNull()
@@ -123,4 +123,23 @@ test('another session\'s package decision is told here too (Turkish)', async ($,
   files[pkg('/repo', 'b')] = JSON.stringify(doc({ package: 'b', title: 'Paket B', waitingOn: { who: 'user', what: 'Şema onayı' } }))
   await turnComplete($)
   expect(repo.toasts).toEqual(['⏸ Arama (repo): sende bekliyor — Paket B: Şema onayı'])
+})
+
+test('permission notice: only a permission prompt opens a decision; a notice naming no tool shows a permission alone and the next call to end closes it', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const repo = fakeRepo(on, {})
+  await start($)
+  await $.classic.Notification({ notification_type: 'idle_prompt', message: 'Claude is waiting for your input' } as never)
+  expect(repo.self()?.decision, 'an idle notice is not a dialog').toBeNull()
+  await $.classic.Notification({ notification_type: 'permission_prompt', message: 'Claude needs your permission' } as never)
+  expect(repo.self()?.decision).toMatchObject({ kind: 'permission', tool: ANY_TOOL })
+  await $.tool.call({ tool: 'Read', file_path: '/repo/x' } as never)
+  expect(repo.self()?.decision, 'with no tool named, the first call to end closes it').toBeNull()
+})
+
+test('permissionToolFrom: the tool\'s name from the notice, nothing else; the placeholder when none is named', () => {
+  expect(permissionToolFrom('Claude needs your permission to use Bash')).toBe('Bash')
+  expect(permissionToolFrom('Claude needs your permission to use mcp__github__create_issue.')).toBe('mcp__github__create_issue')
+  expect(permissionToolFrom('Claude needs your permission')).toBe(ANY_TOOL)
+  expect(permissionToolFrom(undefined)).toBe(ANY_TOOL)
 })

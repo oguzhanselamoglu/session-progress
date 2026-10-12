@@ -146,10 +146,15 @@ Everything stays on your machine: the plugin makes no network requests and reads
 | writes | `<packagesDir>/README.md` | only when you run `/progress init`, and never over an existing folder |
 | writes | `CLAUDE.md` or `.claude/CLAUDE.md` | only when you run `/progress init`, the file already exists and you say yes when asked: one line is appended (see [Using it](#using-it)); a file that mentions session-progress is left as it is |
 
+Of these, only `CLAUDE.md` is a file Claude follows as instructions, and the plugin adds to it only on your yes. The session records under
+`.git/session-progress/` are read by the plugin alone (every open session's copy of it); no other tool runs or obeys them.
+
 Hooks: `tool.call` on Write, Edit, NotebookEdit and Bash only **watches** whether a call wrote a package's `progress.json`, to bind
 the session; it never changes, delays or blocks a call. `session.start`, `session.end`, `turn.start` and `turn.complete` keep the
-session record current. `classic.PermissionRequest` and `tool.call` on every tool only **watch** when a dialog opens on you and when
-that call ends, to mark the session as waiting; they never answer a prompt, change, delay or block a call. The same `tool.call` on
+session record current. `classic.Notification` only **watches** Claude Code's own notice that a permission prompt is showing
+(`permission_prompt`; the tool's name is taken from it, nothing else), and `tool.call` on every tool only **watches** when a question or a
+plan to approve opens and when a call ends, to mark the session as waiting. **No hook of the plugin runs on a permission check:** none
+answers, changes, delays or blocks a prompt or a call, and the notice passes on untouched. The same `tool.call` on
 Agent and `classic.SubagentStop` only **watch** when a subagent starts and ends; SubagentStop's result passes on untouched.
 `classic.PostToolUse` checks a `progress.json` the call just **wrote** (never one it only read): if it does not match the schema, it adds
 one line for Claude naming the file and the first problem, so the writer fixes it in the same turn; the tool's result is never changed. `ui.render`

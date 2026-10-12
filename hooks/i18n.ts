@@ -49,7 +49,8 @@ export type Dict = {
     elsewhere: (where: string, what: string) => string
   }
   /** A dialog open on the person in a session (from its record). */
-  dec: { permission: (tool: string) => string; question: string; plan: string }
+  /** `permissionAny`: a permission prompt whose tool the notice did not name. */
+  dec: { permission: (tool: string) => string; permissionAny: string; question: string; plan: string }
   /** Subagents a session started. */
   a: { label: string; running: (n: number) => string; done: (n: number) => string; failed: (n: number) => string }
   auditLine: (round: number, by: string, verdict: string) => string
@@ -201,7 +202,7 @@ const en: Dict = {
     waiting: (pkg, what) => `⏸ ${pkg}: waiting on you — ${what}`,
     elsewhere: (where, what) => `⏸ ${where}: waiting on you — ${what}`,
   },
-  dec: { permission: (tool) => `permission: ${tool}`, question: 'a question', plan: 'plan approval' },
+  dec: { permission: (tool) => `permission: ${tool}`, permissionAny: 'a permission', question: 'a question', plan: 'plan approval' },
   a: { label: 'Subagents', running: (n) => `${n} running`, done: (n) => `${n} done`, failed: (n) => `${n} failed` },
   auditLine: (round, by, verdict) => `round ${round} · ${by} · ${verdict}`,
   noRepo: 'no git repository found (looking up from the session folder)',
@@ -343,7 +344,7 @@ const tr: Dict = {
     waiting: (pkg, what) => `⏸ ${pkg}: sende bekliyor — ${what}`,
     elsewhere: (where, what) => `⏸ ${where}: sende bekliyor — ${what}`,
   },
-  dec: { permission: (tool) => `izin: ${tool}`, question: 'soru', plan: 'plan onayı' },
+  dec: { permission: (tool) => `izin: ${tool}`, permissionAny: 'izin', question: 'soru', plan: 'plan onayı' },
   a: { label: 'Alt ajanlar', running: (n) => `${n} çalışıyor`, done: (n) => `${n} bitti`, failed: (n) => `${n} hatalı` },
   auditLine: (round, by, verdict) => `${round}. tur · ${by} · ${verdict}`,
   noRepo: 'git deposu bulunamadı (oturum dizininden yukarı)',

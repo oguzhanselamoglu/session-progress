@@ -153,11 +153,17 @@ Her şey senin makinende kalır: eklenti ağ isteği yapmaz ve hiçbir kimlik bi
 | yazar | `<packagesDir>/README.md` | yalnız `/ilerleme kur` çalıştırınca ve mevcut bir klasörün üzerine asla |
 | yazar | `CLAUDE.md` ya da `.claude/CLAUDE.md` | yalnız `/ilerleme kur` çalıştırınca, dosya zaten varsa ve sorulduğunda "evet" dersen: sonuna bir satır eklenir (bkz. [Kullanım](#kullanım)); session-progress'ten söz eden dosyaya dokunulmaz |
 
+Bunlardan yalnız `CLAUDE.md` Claude'un talimat olarak izlediği bir dosyadır ve eklenti ona yalnız sen evet dersen ekler.
+`.git/session-progress/` altındaki oturum kayıtlarını yalnız eklentinin kendisi (açık her oturumdaki kopyası) okur; başka hiçbir araç
+onları çalıştırmaz ya da onlara uymaz.
+
 Kancalar: Write, Edit, NotebookEdit ve Bash üzerindeki `tool.call` yalnız bir çağrının paketin `progress.json`'unu yazıp yazmadığını
 **izler** (oturumu bağlamak için); hiçbir çağrıyı değiştirmez, geciktirmez ya da engellemez. `session.start`, `session.end`,
-`turn.start` ve `turn.complete` oturum kaydını güncel tutar. `classic.PermissionRequest` ve bütün araçlardaki `tool.call` yalnız sende bir
-pencerenin ne zaman açıldığını ve o çağrının ne zaman bittiğini **izler** (oturumu bekliyor göstermek için); hiçbir izni cevaplamaz,
-hiçbir çağrıyı değiştirmez, geciktirmez ya da engellemez. Agent üzerindeki aynı `tool.call` ve `classic.SubagentStop` yalnız bir alt
+`turn.start` ve `turn.complete` oturum kaydını güncel tutar. `classic.Notification` yalnız Claude Code'un bir izin isteminin açıldığını
+bildiren kendi bildirimini **izler** (`permission_prompt`; ondan yalnız aracın adı alınır), bütün araçlardaki `tool.call` de yalnız bir
+sorunun ya da onaylanacak bir planın ne zaman açıldığını ve bir çağrının ne zaman bittiğini **izler** (oturumu bekliyor göstermek için).
+**Eklentinin hiçbir kancası bir izin denetiminde çalışmaz:** hiçbiri bir istemi ya da çağrıyı cevaplamaz, değiştirmez, geciktirmez ya da
+engellemez; bildirim olduğu gibi geçer. Agent üzerindeki aynı `tool.call` ve `classic.SubagentStop` yalnız bir alt
 ajanın ne zaman başlayıp bittiğini **izler**; SubagentStop'un sonucu olduğu gibi geçer. `classic.PostToolUse`, çağrının az önce
 **yazdığı** bir `progress.json`'u denetler (yalnızca okuduğunu asla): şemaya uymuyorsa Claude için dosyayı ve ilk sorunu söyleyen tek
 bir satır ekler, böylece yazan onu aynı turda düzeltir; aracın sonucu asla değişmez. `ui.render` şeridi ve iki paneli çizer. Eklenti iki komut kaydeder

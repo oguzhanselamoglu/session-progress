@@ -86,6 +86,18 @@ function agentsOf(v: unknown): AgentRun[] {
   return out
 }
 
+/** A permission prompt whose tool the notice did not name: shown as a permission alone, closed by whichever call ends first. */
+export const ANY_TOOL = '?'
+
+/**
+ * The tool a permission prompt asks about, from Claude Code's own notice of it ("Claude needs your permission to use Bash");
+ * `ANY_TOOL` when the text names none. Only the tool's name is taken, never anything else the notice says.
+ */
+export function permissionToolFrom(message: unknown): string {
+  const m = typeof message === 'string' ? /permission to use\s+(\S+?)\.?\s*$/i.exec(message) : null
+  return m?.[1] ?? ANY_TOOL
+}
+
 /** The dialog a tool opens on the person: its own question or plan, else a permission prompt for it. */
 export function decisionFor(tool: string, since: string): Decision {
   const kind = tool === 'AskUserQuestion' ? 'question' : tool === 'ExitPlanMode' ? 'plan' : 'permission'

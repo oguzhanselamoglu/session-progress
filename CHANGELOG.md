@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 — 2026-10-12
+
+- **A permission prompt is seen through Claude Code's own notice of it** (`classic.Notification`, `permission_prompt`), no longer through
+  a hook on the permission check: the plugin hooks no permission check at all, so nothing of it can stand in a permission decision. The
+  tool's name is taken from the notice; a notice naming none shows "a permission" and is closed by the next call to end.
+- README: which written file is followed as instructions (only `CLAUDE.md`, only on your yes) and who reads the session records.
+
 ## 0.4.0 — 2026-10-12
 
 Sessions that wait on you are seen sooner and more often, other sessions are richer to look at, and package files stay valid.

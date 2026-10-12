@@ -36,6 +36,7 @@ import {
   boundRead,
   candidatePackages,
   changedPackage,
+  ANY_TOOL,
   decisionFor,
   docsByPackage,
   labelOf,
@@ -53,6 +54,7 @@ import {
   stopAgent,
   segmentOf,
   sessionsDir,
+  permissionToolFrom,
   snippetOf,
   waitingAlerts,
 } from './sessions'
@@ -118,7 +120,8 @@ const agentsText = (agents: readonly AgentRun[] | undefined): { head: string; na
   if (s.failed) parts.push(a.failed(s.failed))
   return { head: `⑂ ${a.label}: ${parts.join(' · ')}`, names: s.running.map((x) => x.description).join(', ') }
 }
-const decisionText = (x: Decision): string => (x.kind === 'permission' ? t().dec.permission(x.tool) : t().dec[x.kind])
+const decisionText = (x: Decision): string =>
+  x.kind === 'permission' ? (x.tool === ANY_TOOL ? t().dec.permissionAny : t().dec.permission(x.tool)) : t().dec[x.kind]
 
 /** Known `progress.json` paths (root → path); renewed by a full scan, only these are read by a quick refresh. */
 let known: { root: string; path: string }[] = []
@@ -887,11 +890,13 @@ export const register: Register = (on) => {
   }).catch(($, e, next) => next(e)) // binding is a side job: its failure never blocks the tool call
 
   // ── Decisions: a dialog open on the person, in the record so other sessions see it ─────────────────────────────────
-  // A permission prompt is about to show. Observe only: the hook always passes on (answering here would decide for the person).
-  on('classic.PermissionRequest', async ($, e, next) => {
-    await openDecision($, e.tool_name)
-    return next(e)
-  }).catch(($, e, next) => next(e))
+  // A permission prompt is showing: Claude Code's own notice of it (`classic.Notification`, `permission_prompt`). Observe only — a
+  // notification decides nothing, and this plugin hooks no permission check at all.
+  on('classic.Notification', async ($, e, next) => {
+    const result = await next(e)
+    if (e.notification_type === 'permission_prompt') await openDecision($, permissionToolFrom(e.message))
+    return result
+  }).catch(($, e, next) => next(e)) // a side job: its failure never touches the notification
 
   // A question or a plan to approve is open for the whole call; any other call that ends closes its own prompt (allowed or refused —
   // there is no event for the answer itself, so a long command that was allowed still reads as waiting until it ends).
@@ -920,7 +925,7 @@ export const register: Register = (on) => {
       }
     }
     const ran = await next(e)
-    if (openDialog === e.tool) await closeDecision($, e.tool)
+    if (openDialog === e.tool || openDialog === ANY_TOOL) await closeDecision($)
     return ran
   }).catch(($, e, next) => next(e)) // a side job: its failure never blocks the tool call
 

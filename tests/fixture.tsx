@@ -173,7 +173,7 @@ export function fakeRepo(
   on('turn.start', ($, e) => ({ turnId: e.turnId }) as never)
   on('turn.complete', () => ({ text: 'ok' }) as never)
   // Classic events have no settings hook beneath in a test: this is the bottom (no classic hook answers).
-  on('classic.PermissionRequest', () => ({}) as never)
+  on('classic.Notification', () => ({}) as never)
   on('classic.SubagentStop', () => ({}) as never)
   on('classic.PostToolUse', () => ({}) as never)
   on('tool.call', async ($, e) => {
