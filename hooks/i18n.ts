@@ -42,7 +42,14 @@ export type Dict = {
     unreadable: (msg: string) => string
   }
   // notifications
-  n: { phaseDone: (pkg: string, phase: string) => string; waiting: (pkg: string, what: string) => string }
+  n: {
+    phaseDone: (pkg: string, phase: string) => string
+    waiting: (pkg: string, what: string) => string
+    /** Another session started waiting on the person (`where`: its name and checkout). */
+    elsewhere: (where: string, what: string) => string
+  }
+  /** A dialog open on the person in a session (from its record). */
+  dec: { permission: (tool: string) => string; question: string; plan: string }
   auditLine: (round: number, by: string, verdict: string) => string
   // discovery / records
   noRepo: string
@@ -73,6 +80,14 @@ export type Dict = {
     languageFailed: (why: string) => string
     initDone: (dir: string) => string
     initExists: (dir: string) => string
+    /** The folder was there, but the CLAUDE.md line was added now. */
+    initExistsShort: (dir: string) => string
+    /** The line `/progress init` adds to an existing CLAUDE.md (in the language in use). */
+    claudeLine: string
+    claudeAdded: (file: string, line: string) => string
+    claudePresent: (file: string) => string
+    claudeTip: (line: string) => string
+    claudeFailed: (file: string, why: string) => string
     initNoRepo: string
     initFailed: (why: string) => string
   }
@@ -173,7 +188,9 @@ const en: Dict = {
   n: {
     phaseDone: (pkg, phase) => `✓ ${pkg}: ${phase} done`,
     waiting: (pkg, what) => `⏸ ${pkg}: waiting on you — ${what}`,
+    elsewhere: (where, what) => `⏸ ${where}: waiting on you — ${what}`,
   },
+  dec: { permission: (tool) => `permission: ${tool}`, question: 'a question', plan: 'plan approval' },
   auditLine: (round, by, verdict) => `round ${round} · ${by} · ${verdict}`,
   noRepo: 'no git repository found (looking up from the session folder)',
   scanFailed: (msg) => `scan failed: ${msg}`,
@@ -202,6 +219,12 @@ const en: Dict = {
     languageFailed: (why) => `The language could not be changed: ${why}`,
     initDone: (dir) => `Created ${dir}/ — commit it with the project. Now ask Claude to track a multi-step task, e.g. "plan this and track it with session-progress".`,
     initExists: (dir) => `${dir}/ already exists; nothing to do.`,
+    initExistsShort: (dir) => `${dir}/ already exists.`,
+    claudeLine: 'Track multi-step work (3+ steps) with session-progress.',
+    claudeAdded: (file, line) => `Added to ${file}: "${line}" — from the next session on, Claude tracks multi-step work without being asked.`,
+    claudePresent: (file) => `${file} already mentions session-progress; left as it is.`,
+    claudeTip: (line) => `Tip: to have work tracked without asking, add this line to the project's CLAUDE.md: "${line}"`,
+    claudeFailed: (file, why) => `${file} could not be updated (${why}); add the line by hand.`,
     initNoRepo: 'Not in a git repository; session-progress works per repository.',
     initFailed: (why) => `The packages folder could not be created: ${why}`,
   },
@@ -299,7 +322,9 @@ const tr: Dict = {
   n: {
     phaseDone: (pkg, phase) => `✓ ${pkg}: ${phase} tamamlandı`,
     waiting: (pkg, what) => `⏸ ${pkg}: sende bekliyor — ${what}`,
+    elsewhere: (where, what) => `⏸ ${where}: sende bekliyor — ${what}`,
   },
+  dec: { permission: (tool) => `izin: ${tool}`, question: 'soru', plan: 'plan onayı' },
   auditLine: (round, by, verdict) => `${round}. tur · ${by} · ${verdict}`,
   noRepo: 'git deposu bulunamadı (oturum dizininden yukarı)',
   scanFailed: (msg) => `tarama başarısız: ${msg}`,
@@ -328,6 +353,12 @@ const tr: Dict = {
     languageFailed: (why) => `Dil değiştirilemedi: ${why}`,
     initDone: (dir) => `${dir}/ oluşturuldu — projeyle birlikte commit'le. Şimdi Claude'dan çok adımlı bir işi takip etmesini iste, örn. "bunu planla ve session-progress ile takip et".`,
     initExists: (dir) => `${dir}/ zaten var; yapılacak bir şey yok.`,
+    initExistsShort: (dir) => `${dir}/ zaten var.`,
+    claudeLine: 'Çok adımlı işleri (3+ adım) session-progress ile takip et.',
+    claudeAdded: (file, line) => `${file} dosyasına eklendi: "${line}" — bir sonraki oturumdan itibaren Claude çok adımlı işleri sen istemeden takip eder.`,
+    claudePresent: (file) => `${file} zaten session-progress'ten söz ediyor; dokunulmadı.`,
+    claudeTip: (line) => `İpucu: işlerin sen istemeden takip edilmesi için projenin CLAUDE.md dosyasına şu satırı ekle: "${line}"`,
+    claudeFailed: (file, why) => `${file} güncellenemedi (${why}); satırı elle ekle.`,
     initNoRepo: 'Bir git deposunda değilsin; session-progress depo bazında çalışır.',
     initFailed: (why) => `Paket klasörü oluşturulamadı: ${why}`,
   },

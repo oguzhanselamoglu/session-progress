@@ -15,7 +15,10 @@ A Claude Code plugin that shows how your work is going, **per session**:
   is working on are listed under it.
 - **`/progress` panel:** the session's package in full. It lists phases with owner, duration, notes, metrics and references, then review
   rounds, other active packages and completed ones.
-- **Notifications:** a toast when a phase of your package finishes or a decision moves to you.
+- **Notifications:** a toast when a phase of your package finishes or a decision moves to you, and when **another** session starts
+  waiting on you: a permission prompt, a question or a plan to approve opens there, or its package's decision moves to you.
+- **Open dialogs count as waiting:** a session showing a permission prompt, a question or a plan to approve is listed as waiting on you
+  in `/sessions` and in the band's counter, even when it is bound to no package.
 
 It is built for running several sessions at once (worktrees, parallel features, agents) and seeing at a glance which one needs you.
 
@@ -49,10 +52,60 @@ Linux should work the same, Windows paths are handled but not yet tried on Windo
 
 ## Quick start
 
-1. In your repository: `/progress init` — creates `.progress/` (commit it with the project).
+1. In your repository: `/progress init` — creates `.progress/` (commit it with the project). If the project has a `CLAUDE.md`,
+   it adds the line that makes tracking automatic; otherwise it prints it (see [Using it](#using-it)).
 2. Ask Claude for something with a few steps and say *"plan this and track it with session-progress"*. Claude writes the package file;
    the band appears above the prompt.
 3. Open `/sessions` in any session to see every open session, the ones waiting on you first.
+
+## Using it
+
+### Give the work as a list and ask for tracking
+
+The bundled skill teaches Claude how to write the package file, but Claude decides when to use it. Ask for tracking in the prompt and it
+always does:
+
+```
+Do these and track them with session-progress:
+- Add e-mail validation to the login form
+- Translate the error messages
+- Write the tests
+- Bring it to me for approval before merging
+```
+
+Each item becomes a **phase**. The band shows the title, a bar, `done/total` and the current phase; it moves as Claude starts and
+finishes phases, and a toast tells you when one is done. Phase titles are written in the language you speak with Claude.
+
+### Ask for your approval as a step
+
+An item like *"bring it to me for approval"* becomes a phase waiting on you. When Claude reaches it, it stops: the band turns amber
+(**WAITING ON YOU**), a toast says what is waiting, and the session moves to the top of `/sessions` in every other session.
+
+### Make it automatic in a project
+
+With this line in the project's `CLAUDE.md`, Claude tracks multi-step work there without being asked (the skill follows a project's
+own rules first):
+
+```md
+Track multi-step work (3+ steps) with session-progress.
+```
+
+`/progress init` adds it for you, in the language you use, to an existing `CLAUDE.md` (or `.claude/CLAUDE.md`): appended at the end,
+never twice, and not at all when the file already mentions session-progress. It never creates a `CLAUDE.md`; without one it prints the
+line for you to add. It takes effect from the next session.
+
+### Several sessions
+
+- Name each session so the cards are easy to tell apart: `/progress name API work`.
+- Open `/sessions` in any of them: sessions waiting on you come first, with what they wait for (a package's decision, a permission
+  prompt, a question or a plan to approve). When another session starts waiting on you, a toast tells you here too.
+- Sessions in different worktrees of one repository see each other; separate repositories do not.
+
+### Tips
+
+- 3–8 meaningful items work best: the bar moves by finished phases, so very fine steps add noise.
+- One package per piece of work. A finished package is never picked up again; new work gets a new package.
+- `/progress` shows the package in full: each phase's owner, duration, notes and references.
 
 ## How it works
 
@@ -64,8 +117,8 @@ a Bash command that names the path and changes the file. Reading a file never bi
 You can also bind by hand with `/progress bind <package>`.
 
 Every session keeps a small record under `<main repo>/.git/session-progress/sessions/`. The `.git` folder is shared by all worktrees and
-never tracked. The sessions panel is built from these records. A record is refreshed at session start, at each turn start and end, and
-every 30 s. A session silent for 3 minutes, or one that ended, counts as closed. Records are only written in repositories that have a
+never tracked. The sessions panel is built from these records. A record is refreshed at session start, at each turn start and end, when a dialog opens
+or closes, and every 30 s. A session silent for 3 minutes, or one that ended, counts as closed. Records are only written in repositories that have a
 packages folder, so other projects stay untouched.
 
 ### What it reads and writes
@@ -77,12 +130,14 @@ Everything stays on your machine: the plugin makes no network requests and reads
 | reads | `<packagesDir>/*/progress.json` in the main checkout and every worktree | the packages it shows |
 | reads | `.claude/session-progress.json` | the project's settings |
 | reads | `.git` (file or folder) and `.git/worktrees/*/gitdir` | to find the main checkout and its worktrees |
-| writes | `.git/session-progress/sessions/<session id>.json` | one small record per session: name, checkout, bound package, last signal. Git ignores unknown folders inside `.git`; nothing is committed. Written only in repositories that have a packages folder. |
+| writes | `.git/session-progress/sessions/<session id>.json` | one small record per session: name, checkout, bound package, last signal, and the kind of dialog open on you with the tool's name (`permission: Bash`; never the command or the tool's input). Git ignores unknown folders inside `.git`; nothing is committed. Written only in repositories that have a packages folder. |
 | writes | `<packagesDir>/README.md` | only when you run `/progress init`, and never over an existing folder |
+| writes | `CLAUDE.md` or `.claude/CLAUDE.md` | only when you run `/progress init` and the file already exists: one line is appended (see [Using it](#using-it)); a file that mentions session-progress is left as it is |
 
 Hooks: `tool.call` on Write, Edit, NotebookEdit and Bash only **watches** whether a call wrote a package's `progress.json`, to bind
 the session; it never changes, delays or blocks a call. `session.start`, `session.end`, `turn.start` and `turn.complete` keep the
-session record current. `ui.render` draws the band and the two panels. The plugin registers two commands (`/progress`, `/sessions`;
+session record current. `classic.PermissionRequest` and `tool.call` on every tool only **watch** when a dialog opens on you and when
+that call ends, to mark the session as waiting; they never answer a prompt, change, delay or block a call. `ui.render` draws the band and the two panels. The plugin registers two commands (`/progress`, `/sessions`;
 in Turkish `/ilerleme`, `/oturumlar`) and keeps your language choice in its own store.
 
 ### `progress.json`

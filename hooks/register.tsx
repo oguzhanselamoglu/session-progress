@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { PackageRead, ProgressDoc, ProjectConfig, SessionRecord, Snapshot } from '../types'
+import type { Decision, PackageRead, ProgressDoc, ProjectConfig, SessionRecord, Snapshot } from '../types'
 import { DICTS, LANGS, SUB_ALIASES, resolveLang, type Dict, type Lang } from './i18n'
 import {
   STATUS_VIEW,
@@ -32,6 +32,7 @@ import {
   boundRead,
   candidatePackages,
   changedPackage,
+  decisionFor,
   docsByPackage,
   labelOf,
   mentionsProgress,
@@ -45,6 +46,7 @@ import {
   segmentOf,
   sessionsDir,
   snippetOf,
+  waitingAlerts,
 } from './sessions'
 
 const PANE = 'session-progress'
@@ -97,6 +99,7 @@ const baseName = (path: string): string => normPath(path).replace(/\/+$/, '').sp
 /** Absolute path, POSIX (`/x`) or Windows (`C:/x` once normalised). */
 const isAbsolute = (path: string): boolean => /^([A-Za-z]:)?\//.test(normPath(path))
 const owner = (who: string): string => ownerLabel(who, t(), ownerLabels)
+const decisionText = (x: Decision): string => (x.kind === 'permission' ? t().dec.permission(x.tool) : t().dec[x.kind])
 
 /** Known `progress.json` paths (root → path); renewed by a full scan, only these are read by a quick refresh. */
 let known: { root: string; path: string }[] = []
@@ -120,6 +123,10 @@ let queue: Promise<void> = Promise.resolve()
 let selfQueue: Promise<void> = Promise.resolve()
 /** Whether the first notification pass of this module load ran: a package appearing later counts as "born in this session". */
 let baselineDone = false
+/** Other sessions' waiting state at the last pass (`waitingAlerts`); `null` until the first pass, which announces nothing. */
+let sessionSeen: Record<string, [string, string]> | null = null
+/** The tool whose dialog this session has open (mirrors the record's `decision`): a tool call that ends clears it only when it matches. */
+let openDialog: string | null = null
 /** Told once when the record file could not be written. */
 let writeWarned = false
 /** The last full scan's error (discovery or project config), carried by quick refreshes. */
@@ -278,6 +285,36 @@ async function readAll($: Env, scanError: string | null): Promise<void> {
   const snap: Snapshot = { readAt: now, cwdRoot, reads, error: scanError, sessions, closedSessions: closedUnread, folder }
   await update($, snapshot, () => snap)
   await notify($, reads)
+  await notifyElsewhere($, sessions, reads, now)
+}
+
+/**
+ * One notification when ANOTHER open session starts waiting on the person: a dialog opened there (a permission prompt, a question, a
+ * plan to approve) or its package's decision moved to them. Silent at the first pass of a module load (what already waited is no news).
+ */
+async function notifyElsewhere($: Env, sessions: readonly SessionRecord[], reads: readonly PackageRead[], now: number): Promise<void> {
+  const me = await read($, self)
+  const { alerts, seen: next } = waitingAlerts(sessions, me, reads, now, sessionSeen, segment)
+  sessionSeen = next
+  for (const { rec, decision, doc } of alerts) {
+    const where = `${labelOf(rec, t().s.sessionId)} (${baseName(rec.checkout ?? rec.cwd)})`
+    if (decision) $.ui.toast(t().n.elsewhere(where, decisionText(decision)), { timeoutMs: 8000 })
+    if (doc) $.ui.toast(t().n.elsewhere(where, `${doc.title}: ${waitingWhat(doc)}`), { timeoutMs: 8000 })
+  }
+}
+
+/** Opens (or replaces) the dialog this session has open on the person, in its record at once (other sessions read it). */
+async function openDecision($: Env, tool: string): Promise<void> {
+  openDialog = tool
+  const since = new Date(await $.clock.now()).toISOString()
+  await writeSelf($, (r) => ({ ...r, decision: decisionFor(tool, since) }))
+}
+
+/** Closes the open dialog: any (`tool` undefined) or only the given tool's. Nothing is written when none is open. */
+async function closeDecision($: Env, tool?: string): Promise<void> {
+  if (tool !== undefined && openDialog !== tool) return
+  openDialog = null
+  await writeSelf($, (r) => (r.decision && (tool === undefined || r.decision.tool === tool) ? { ...r, decision: null } : null))
 }
 
 /**
@@ -383,7 +420,7 @@ function markEnded($: Env, sessionId: string): Promise<void> {
       const cur = await read($, self)
       const target = cur?.id === sessionId ? cur : await loadRecord($, sessionId)
       if (!target) return
-      const done = { ...target, busy: false, ended: true, lastSeen: nowIso }
+      const done = { ...target, busy: false, ended: true, lastSeen: nowIso, decision: null }
       if (cur?.id === sessionId) await update($, self, () => done)
       if (mainRoot && registryOn) await $.fs.write(`${sessionsDir(mainRoot)}/${sessionId}.json`, `${JSON.stringify(done, null, 2)}\n`)
     })
@@ -473,16 +510,48 @@ the session-progress plugin for Claude Code shows them above the prompt and in i
 Commit this folder with the project.
 `
 
+/** The project's CLAUDE.md files `/progress init` may add its line to, in order (it never creates one). */
+const CLAUDE_FILES = ['CLAUDE.md', '.claude/CLAUDE.md']
+
+/**
+ * Adds the "track multi-step work with session-progress" line (in the language in use) to the checkout's EXISTING CLAUDE.md, so Claude
+ * tracks work there without being asked. Appended, never overwritten; a file that already mentions session-progress is left as it is
+ * (the project's own rule, or the line added before). Without a CLAUDE.md nothing is created: the answer is the tip with the line.
+ */
+async function addClaudeLine($: Env, root: string): Promise<{ text: string; changed: boolean }> {
+  const c = t().c
+  for (const name of CLAUDE_FILES) {
+    const path = `${root}/${name}`
+    if (!(await $.fs.exists(path))) continue
+    try {
+      const text = await $.fs.read(path)
+      const current = typeof text === 'string' ? text : ''
+      if (/session-progress/i.test(current)) return { text: c.claudePresent(name), changed: false }
+      const sep = current === '' || current.endsWith('\n\n') ? '' : current.endsWith('\n') ? '\n' : '\n\n'
+      await $.fs.write(path, `${current}${sep}${c.claudeLine}\n`)
+      return { text: c.claudeAdded(name, c.claudeLine), changed: true }
+    } catch (e) {
+      return { text: c.claudeFailed(name, (e as Error).message), changed: false }
+    }
+  }
+  return { text: c.claudeTip(c.claudeLine), changed: false }
+}
+
 /**
  * `/progress init`: creates the packages folder (from the project's config, default `.progress`) in THIS checkout with a short
- * README, so the plugin starts working in a repository that never used it. Nothing is overwritten.
+ * README, so the plugin starts working in a repository that never used it, and adds its line to an existing CLAUDE.md (also when the
+ * folder was there already). Nothing is overwritten.
  */
 async function initFolder($: Env): Promise<{ text: string }> {
   await refresh($, true)
   const c = t().c
   if (!cwdRoot) return { text: c.initNoRepo }
-  const dir = `${cwdRoot}/${packagesDir}`
-  if (await $.fs.exists(dir)) return { text: c.initExists(packagesDir) }
+  const root = cwdRoot
+  const dir = `${root}/${packagesDir}`
+  if (await $.fs.exists(dir)) {
+    const claude = await addClaudeLine($, root)
+    return { text: `${claude.changed ? c.initExistsShort(packagesDir) : c.initExists(packagesDir)}\n${claude.text}` }
+  }
   try {
     await $.fs.write(`${dir}/README.md`, PACKAGES_README)
   } catch (e) {
@@ -491,7 +560,7 @@ async function initFolder($: Env): Promise<{ text: string }> {
   await refresh($, true)
   // The registry is on now: write this session's record so the sessions panel lists it at once.
   await writeSelf($, (r, now) => ({ ...r, lastSeen: now }))
-  return { text: c.initDone(packagesDir) }
+  return { text: `${c.initDone(packagesDir)}\n${(await addClaudeLine($, root)).text}` }
 }
 
 /** Registers the command names of the language in use (the other language's names keep answering if registered earlier). */
@@ -575,14 +644,17 @@ export const register: Register = (on) => {
   on('turn.start', async ($, e, next) => {
     const result = await next(e)
     // A turn starting is sure proof the session lives: an "ended" left by mistake is taken back.
-    await writeSelf($, (r, now) => ({ ...r, busy: true, ended: false, lastSeen: now, snippet: r.snippet ?? snippetOf(e.text) }))
+    // A new prompt means no dialog is open any more (a safety net for one whose end was never seen).
+    openDialog = null
+    await writeSelf($, (r, now) => ({ ...r, busy: true, ended: false, lastSeen: now, snippet: r.snippet ?? snippetOf(e.text), decision: null }))
     return result
   })
 
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
     if (!e.agentId) {
-      await writeSelf($, (r, now) => ({ ...r, busy: false, lastSeen: now }))
+      openDialog = null
+      await writeSelf($, (r, now) => ({ ...r, busy: false, lastSeen: now, decision: null }))
       await refresh($, true)
     }
     return result
@@ -628,6 +700,29 @@ export const register: Register = (on) => {
     }
     return ran
   }).catch(($, e, next) => next(e)) // binding is a side job: its failure never blocks the tool call
+
+  // ── Decisions: a dialog open on the person, in the record so other sessions see it ─────────────────────────────────
+  // A permission prompt is about to show. Observe only: the hook always passes on (answering here would decide for the person).
+  on('classic.PermissionRequest', async ($, e, next) => {
+    await openDecision($, e.tool_name)
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // A question or a plan to approve is open for the whole call; any other call that ends closes its own prompt (allowed or refused —
+  // there is no event for the answer itself, so a long command that was allowed still reads as waiting until it ends).
+  on('tool.call', async ($, e, next) => {
+    if (e.tool === 'AskUserQuestion' || e.tool === 'ExitPlanMode') {
+      await openDecision($, e.tool)
+      try {
+        return await next(e)
+      } finally {
+        await closeDecision($, e.tool)
+      }
+    }
+    const ran = await next(e)
+    if (openDialog === e.tool) await closeDecision($, e.tool)
+    return ran
+  }).catch(($, e, next) => next(e)) // a side job: its failure never blocks the tool call
 
   on('command.run', { command: ['progress', 'ilerleme'] }, async ($, e) => runProgress($, e.args))
   on('command.run', { command: ['sessions', 'oturumlar'] }, async ($) => runSessions($))
@@ -886,6 +981,7 @@ export const register: Register = (on) => {
       const body = [
         <Text key={`h-${k}`}>{status}<Text dimColor>  ·  {ago(rec.lastSeen, now)}</Text></Text>,
       ]
+      if (rec.decision) body.push(<Text key={`d-${k}`} color="warning">{d.s.waitingFor(decisionText(rec.decision))}</Text>)
       if (doc) {
         body.push(<Text key={`t-${k}`} bold color="claude">{doc.title}</Text>, progressLine(doc, k, 12), phaseStrip(doc, k), ...stateLines(doc, k))
       } else {

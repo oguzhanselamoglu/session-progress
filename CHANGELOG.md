@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- **Open dialogs count as waiting on you.** A session showing a permission prompt, a question (AskUserQuestion) or a plan to approve
+  (ExitPlanMode) is marked waiting in its record at once: `/sessions` lists it first with what it asks (`permission: Bash`), and the
+  band's counter counts it, even when the session is bound to no package. The record keeps the dialog's kind and the tool's name,
+  never its input. There is no event for the answer itself: an allowed call reads as waiting until it ends.
+- **Notifications from other sessions.** A toast when another open session starts waiting on you (a dialog opens there, or its
+  package's decision moves to you); silent for what was already waiting when this session started looking. Other sessions are read
+  every 30 s, so a prompt answered sooner may pass without one.
+- Session records gain an optional `decision` field; records from 0.3.x read as before.
+- README: a "Using it" section — a list with tracking asked for, approval as a step, the `CLAUDE.md` line that makes it
+  automatic, several sessions, tips.
+- `/progress init` (`/ilerleme kur`) adds the line that makes tracking automatic ("Track multi-step work (3+ steps) with
+  session-progress.", in the language in use) to an existing `CLAUDE.md` or `.claude/CLAUDE.md`: appended, once, never when the
+  file already mentions session-progress, also when the packages folder was there already. It never creates a `CLAUDE.md`; without
+  one it prints the line as a tip.
+
 ## 0.3.2 — 2026-10-10
 
 - Listing links (homepage, repository, support, documentation) and a privacy statement (`PRIVACY.md`).

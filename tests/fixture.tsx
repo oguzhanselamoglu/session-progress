@@ -41,6 +41,7 @@ export function session(over: Partial<SessionRecord> & { id: string }): SessionR
     ended: false,
     package: null,
     bindSource: null,
+    decision: null,
     ...over,
   }
 }
@@ -151,6 +152,8 @@ export function fakeRepo(
   on('ui.open', () => ({ value: { isPlaced: true } }) as never)
   on('turn.start', ($, e) => ({ turnId: e.turnId }) as never)
   on('turn.complete', () => ({ text: 'ok' }) as never)
+  // Classic events have no settings hook beneath in a test: this is the bottom (no classic hook answers).
+  on('classic.PermissionRequest', () => ({}) as never)
   on('tool.call', ($, e) => {
     opts.onTool?.(e as unknown as Record<string, unknown>, repo)
     return (opts.toolResult ?? { result: 'ok' }) as never

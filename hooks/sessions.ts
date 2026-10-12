@@ -1,6 +1,6 @@
 // Pure core (sessions): record validation, package from a tool call, openness, labels, panel ordering. Never touches `$`.
-import type { PackageRead, ProgressDoc, SessionRecord } from '../types'
-import { isComplete, waitingWho } from './model'
+import type { Decision, PackageRead, ProgressDoc, SessionRecord } from '../types'
+import { isComplete, waitingWho, waitingWhat } from './model'
 
 /** A session whose last signal is older than this (or that ended) counts as closed. The heartbeat is every 30 s. */
 export const OPEN_MS = 3 * 60_000
@@ -63,6 +63,19 @@ export function changedPackage(
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const isTime = (v: unknown): v is string => typeof v === 'string' && !Number.isNaN(Date.parse(v))
 const strOrNull = (v: unknown): boolean => v === null || typeof v === 'string'
+const KINDS: readonly string[] = ['permission', 'question', 'plan']
+
+/** A record's `decision`: a malformed one reads as none (it never hides the whole session); a record written by 0.3.x has none. */
+function decisionOf(v: unknown): Decision | null {
+  if (!isObj(v) || !KINDS.includes(v.kind as string) || typeof v.tool !== 'string' || !v.tool || !isTime(v.since)) return null
+  return { kind: v.kind as Decision['kind'], tool: v.tool, since: v.since }
+}
+
+/** The dialog a tool opens on the person: its own question or plan, else a permission prompt for it. */
+export function decisionFor(tool: string, since: string): Decision {
+  const kind = tool === 'AskUserQuestion' ? 'question' : tool === 'ExitPlanMode' ? 'plan' : 'permission'
+  return { kind, tool, since }
+}
 
 /** Validates a record's text; a broken record is `null` (the panel skips it: another session's half-written file never breaks it). */
 export function parseSession(text: string): SessionRecord | null {
@@ -79,7 +92,7 @@ export function parseSession(text: string): SessionRecord | null {
   if (typeof raw.busy !== 'boolean' || typeof raw.ended !== 'boolean') return null
   if (raw.bindSource !== null && raw.bindSource !== 'auto' && raw.bindSource !== 'manual') return null
   if (raw.checkout !== undefined && !strOrNull(raw.checkout)) return null
-  return { ...(raw as SessionRecord), checkout: (raw.checkout as string | null | undefined) ?? null }
+  return { ...(raw as SessionRecord), checkout: (raw.checkout as string | null | undefined) ?? null, decision: decisionOf(raw.decision) }
 }
 
 export function newSession(id: string, cwd: string, nowIso: string, checkout: string | null = null): SessionRecord {
@@ -96,6 +109,7 @@ export function newSession(id: string, cwd: string, nowIso: string, checkout: st
     ended: false,
     package: null,
     bindSource: null,
+    decision: null,
   }
 }
 
@@ -156,6 +170,9 @@ export function boundRead(reads: readonly PackageRead[], pkg: string | null, seg
   return best
 }
 
+/** An unfinished package whose decision is on the person. */
+const docWaits = (d: ProgressDoc | null | undefined): d is ProgressDoc => !!d && !isComplete(d) && waitingWho(d) === 'user'
+
 export type SessionStatus = 'user' | 'busy' | 'idle'
 export type SessionRow = { rec: SessionRecord; isSelf: boolean; doc: ProgressDoc | null; status: SessionStatus }
 
@@ -185,7 +202,7 @@ export function organizeSessions(
       continue
     }
     const doc = rec.package ? (docs.get(rec.package) ?? null) : null
-    const status: SessionStatus = doc && !isComplete(doc) && waitingWho(doc) === 'user' ? 'user' : rec.busy ? 'busy' : 'idle'
+    const status: SessionStatus = rec.decision || docWaits(doc) ? 'user' : rec.busy ? 'busy' : 'idle'
     rows.push({ rec, isSelf, doc, status })
   }
   const rank = (r: SessionRow): number => (r.status === 'user' ? 0 : r.isSelf ? 1 : 2)
@@ -199,8 +216,9 @@ export function organizeSessions(
 }
 
 /**
- * Band counter: DIFFERENT packages bound to other open sessions that wait on the person — two sessions on one package count once,
- * this session's own package never (the band already says "WAITING ON YOU" for it).
+ * Band counter: what waits on the person in OTHER open sessions — DIFFERENT packages waiting on them (two sessions on one package count
+ * once, this session's own package never: the band already says "WAITING ON YOU" for it), plus each session with a dialog open on them
+ * whose package is not already counted.
  */
 export function othersWaitingOnUser(
   records: readonly SessionRecord[],
@@ -210,11 +228,49 @@ export function othersWaitingOnUser(
   segment = DEFAULT_SEGMENT,
 ): number {
   const docs = docsByPackage(reads, segment)
-  const pkgs = new Set<string>()
+  const keys = new Set<string>()
   for (const r of records) {
-    if (r.id === self?.id || !isOpen(r, now) || !r.package || r.package === self?.package) continue
-    const d = docs.get(r.package)
-    if (d && !isComplete(d) && waitingWho(d) === 'user') pkgs.add(r.package)
+    if (r.id === self?.id || !isOpen(r, now)) continue
+    if (r.package && r.package !== self?.package && docWaits(docs.get(r.package))) keys.add(`p:${r.package}`)
+    else if (r.decision) keys.add(`s:${r.id}`)
   }
-  return pkgs.size
+  return keys.size
+}
+
+/** One announcement for another session that just started waiting on the person: a dialog, or its package's decision. */
+export type WaitingAlert = { rec: SessionRecord; decision: Decision | null; doc: ProgressDoc | null }
+
+/**
+ * Other open sessions that started waiting on the person since the last pass (`seen`: session id → [dialog key, package key] last seen). A dialog is
+ * announced once per opening (its `since`); a package's decision once per decision, never for this session's own package (its own
+ * notifications tell it) and once per package when several sessions share it. `seen === null` is the first pass: nothing is announced,
+ * only remembered (what was already waiting before this session looked is not news).
+ */
+export function waitingAlerts(
+  records: readonly SessionRecord[],
+  self: SessionRecord | null,
+  reads: readonly PackageRead[],
+  now: number,
+  seen: Readonly<Record<string, readonly [string, string]>> | null,
+  segment = DEFAULT_SEGMENT,
+): { alerts: WaitingAlert[]; seen: Record<string, [string, string]> } {
+  const docs = docsByPackage(reads, segment)
+  const next: Record<string, [string, string]> = {}
+  const alerts: WaitingAlert[] = []
+  const told = new Set<string>()
+  for (const rec of records) {
+    if (rec.id === self?.id || !isOpen(rec, now)) continue
+    const raw = rec.package ? docs.get(rec.package) : undefined
+    const doc = rec.package && rec.package !== self?.package && docWaits(raw) ? raw : null
+    const dKey = rec.decision ? `${rec.decision.kind}|${rec.decision.tool}|${rec.decision.since}` : ''
+    const pKey = doc ? `${rec.package}|${waitingWhat(doc)}` : ''
+    next[rec.id] = [dKey, pKey]
+    if (seen === null) continue
+    const [prevD, prevP] = seen[rec.id] ?? ['', '']
+    const newDecision = !!dKey && dKey !== prevD
+    const newDoc = !!pKey && pKey !== prevP && !told.has(pKey)
+    if (newDoc) told.add(pKey)
+    if (newDecision || newDoc) alerts.push({ rec, decision: newDecision ? rec.decision ?? null : null, doc: newDoc ? doc : null })
+  }
+  return { alerts, seen: next }
 }

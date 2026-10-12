@@ -15,7 +15,10 @@
   paketler altta listelenir.
 - **`/ilerleme` paneli:** oturumun paketi tüm ayrıntısıyla. Aşamalar sahibi, süresi, notları, ölçümleri ve bağlantılarıyla; ardından
   denetim turları, diğer aktif paketler ve tamamlananlar.
-- **Bildirimler:** paketinin bir aşaması bitince ya da karar sana geçince kısa bir bildirim.
+- **Bildirimler:** paketinin bir aşaması bitince ya da karar sana geçince kısa bir bildirim; **başka** bir oturum seni beklemeye
+  başlayınca da: orada bir izin isteği, soru ya da plan onayı açılınca ya da paketinin kararı sana geçince.
+- **Açık pencere de beklemedir:** izin isteği, soru ya da plan onayı gösteren oturum, hiçbir pakete bağlı olmasa da `/oturumlar`
+  panelinde ve şeridin sayacında sende bekliyor görünür.
 
 Aynı anda birden çok oturumla (worktree'ler, paralel özellikler, ajanlar) çalışırken hangisinin seni beklediğini tek bakışta görmek
 için yapıldı.
@@ -56,10 +59,60 @@ denendi; Linux'ta aynı çalışması beklenir, Windows yolları destekleniyor a
 
 ## Hızlı başlangıç
 
-1. Deponda: `/ilerleme kur` — `.progress/` klasörünü oluşturur (projeyle birlikte commit'le).
+1. Deponda: `/ilerleme kur` — `.progress/` klasörünü oluşturur (projeyle birlikte commit'le). Projede `CLAUDE.md` varsa takibi
+   otomatik yapan satırı ona ekler, yoksa satırı gösterir (bkz. [Kullanım](#kullanım)).
 2. Claude'dan birkaç adımlı bir iş iste ve *"bunu planla ve session-progress ile takip et"* de. Claude paket dosyasını yazar; şerit
    prompt'un üstünde belirir.
 3. Herhangi bir oturumda `/oturumlar` ile tüm açık oturumları gör; seni bekleyenler en üstte.
+
+## Kullanım
+
+### İşi madde madde ver ve takip iste
+
+Eklentiyle gelen beceri Claude'a paket dosyasını nasıl yazacağını öğretir, ama ne zaman kullanacağına Claude karar verir. Prompt'ta
+takip istersen her zaman yazar:
+
+```
+Şunları yap ve session-progress ile takip et:
+- Login formuna e-posta doğrulaması ekle
+- Hata mesajlarını Türkçeleştir
+- Testleri yaz
+- Merge öncesi onayıma getir
+```
+
+Her madde bir **aşama** olur. Şerit başlığı, bir çubuğu, `biten/toplam` sayısını ve şu anki aşamayı gösterir; Claude aşamalara
+başlayıp bitirdikçe ilerler, her aşama bitince bir bildirim gelir. Aşama başlıkları Claude'la konuştuğun dilde yazılır.
+
+### Onayını bir adım olarak iste
+
+*"Onayıma getir"* gibi bir madde seni bekleyen bir aşama olur. Claude oraya gelince durur: şerit sarıya döner (**SENDE BEKLİYOR**),
+bir bildirim neyin beklediğini söyler ve oturum diğer oturumlardaki `/oturumlar` panelinde en üste çıkar.
+
+### Bir projede otomatik yap
+
+Projenin `CLAUDE.md` dosyasında bu satır varsa Claude o projede çok adımlı işleri sen istemeden takip eder (beceri önce projenin kendi
+kurallarına uyar):
+
+```md
+Çok adımlı işleri (3+ adım) session-progress ile takip et.
+```
+
+`/ilerleme kur` bu satırı senin yerine, kullandığın dilde, mevcut bir `CLAUDE.md` (ya da `.claude/CLAUDE.md`) dosyasına ekler: sonuna,
+asla iki kez değil; dosya zaten session-progress'ten söz ediyorsa hiç dokunmaz. Yeni bir `CLAUDE.md` oluşturmaz; dosya yoksa satırı
+eklemen için gösterir. Bir sonraki oturumdan itibaren geçerli olur.
+
+### Birden çok oturum
+
+- Kartları kolay ayırt etmek için her oturuma ad ver: `/ilerleme ad API işi`.
+- Herhangi birinde `/oturumlar`'ı aç: seni bekleyenler en üstte, neyi beklediğiyle (bir paketin kararı, bir izin isteği, bir soru ya da
+  bir plan onayı). Başka bir oturum seni beklemeye başlayınca burada da bildirim çıkar.
+- Aynı deponun farklı worktree'lerindeki oturumlar birbirini görür; ayrı depolar görmez.
+
+### İpuçları
+
+- En iyisi 3–8 anlamlı madde: çubuk biten aşamalara göre ilerler, çok ince adımlar gürültü yapar.
+- Her iş için bir paket. Tamamlanan pakete bir daha bağlanılmaz; yeni iş yeni paket alır.
+- `/ilerleme` paketi tüm ayrıntısıyla gösterir: her aşamanın sahibi, süresi, notları ve bağlantıları.
 
 ## Nasıl çalışır
 
@@ -71,8 +124,8 @@ dosyayı gerçekten değiştiren bir Bash komutuyla bağlanır. Dosyayı okumak 
 bağlamak için `/ilerleme bağla <paket>`.
 
 Her oturum `<ana depo>/.git/session-progress/sessions/` altında küçük bir kayıt tutar. `.git` klasörü bütün worktree'lerde ortaktır ve
-git onu izlemez. Oturumlar paneli bu kayıtlardan kurulur. Kayıt oturum başında, her turun başında ve sonunda ve 30 saniyede bir
-tazelenir. 3 dakikadır ses vermeyen ya da kapanmış oturum kapalı sayılır. Kayıtlar yalnızca paket klasörü olan depolarda yazılır; başka
+git onu izlemez. Oturumlar paneli bu kayıtlardan kurulur. Kayıt oturum başında, her turun başında ve sonunda, bir pencere açılıp
+kapanınca ve 30 saniyede bir tazelenir. 3 dakikadır ses vermeyen ya da kapanmış oturum kapalı sayılır. Kayıtlar yalnızca paket klasörü olan depolarda yazılır; başka
 projelere dokunulmaz.
 
 ### Neyi okur, neyi yazar
@@ -84,12 +137,15 @@ Her şey senin makinende kalır: eklenti ağ isteği yapmaz ve hiçbir kimlik bi
 | okur | ana checkout'ta ve her worktree'de `<packagesDir>/*/progress.json` | gösterdiği paketler |
 | okur | `.claude/session-progress.json` | projenin ayarları |
 | okur | `.git` (dosya ya da klasör) ve `.git/worktrees/*/gitdir` | ana checkout'u ve worktree'lerini bulmak için |
-| yazar | `.git/session-progress/sessions/<oturum kimliği>.json` | oturum başına küçük bir kayıt: ad, checkout, bağlı paket, son sinyal. Git, `.git` içindeki tanımadığı klasörleri yok sayar; hiçbir şey commit'lenmez. Yalnız paket klasörü olan depolarda yazılır. |
+| yazar | `.git/session-progress/sessions/<oturum kimliği>.json` | oturum başına küçük bir kayıt: ad, checkout, bağlı paket, son sinyal ve sende açık pencerenin türüyle aracın adı (`izin: Bash`; komut ya da aracın girdisi asla yazılmaz). Git, `.git` içindeki tanımadığı klasörleri yok sayar; hiçbir şey commit'lenmez. Yalnız paket klasörü olan depolarda yazılır. |
 | yazar | `<packagesDir>/README.md` | yalnız `/ilerleme kur` çalıştırınca ve mevcut bir klasörün üzerine asla |
+| yazar | `CLAUDE.md` ya da `.claude/CLAUDE.md` | yalnız `/ilerleme kur` çalıştırınca ve dosya zaten varsa: sonuna bir satır eklenir (bkz. [Kullanım](#kullanım)); session-progress'ten söz eden dosyaya dokunulmaz |
 
 Kancalar: Write, Edit, NotebookEdit ve Bash üzerindeki `tool.call` yalnız bir çağrının paketin `progress.json`'unu yazıp yazmadığını
 **izler** (oturumu bağlamak için); hiçbir çağrıyı değiştirmez, geciktirmez ya da engellemez. `session.start`, `session.end`,
-`turn.start` ve `turn.complete` oturum kaydını güncel tutar. `ui.render` şeridi ve iki paneli çizer. Eklenti iki komut kaydeder
+`turn.start` ve `turn.complete` oturum kaydını güncel tutar. `classic.PermissionRequest` ve bütün araçlardaki `tool.call` yalnız sende bir
+pencerenin ne zaman açıldığını ve o çağrının ne zaman bittiğini **izler** (oturumu bekliyor göstermek için); hiçbir izni cevaplamaz,
+hiçbir çağrıyı değiştirmez, geciktirmez ya da engellemez. `ui.render` şeridi ve iki paneli çizer. Eklenti iki komut kaydeder
 (`/ilerleme`, `/oturumlar`; İngilizcede `/progress`, `/sessions`) ve dil seçimini kendi deposunda tutar.
 
 ### `progress.json`
