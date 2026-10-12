@@ -42,7 +42,16 @@ export type Dict = {
     unreadable: (msg: string) => string
   }
   // notifications
-  n: { phaseDone: (pkg: string, phase: string) => string; waiting: (pkg: string, what: string) => string }
+  n: {
+    phaseDone: (pkg: string, phase: string) => string
+    waiting: (pkg: string, what: string) => string
+    /** Another session started waiting on the person (`where`: its name and checkout). */
+    elsewhere: (where: string, what: string) => string
+  }
+  /** A dialog open on the person in a session (from its record). */
+  dec: { permission: (tool: string) => string; question: string; plan: string }
+  /** Subagents a session started. */
+  a: { label: string; running: (n: number) => string; done: (n: number) => string; failed: (n: number) => string }
   auditLine: (round: number, by: string, verdict: string) => string
   // discovery / records
   noRepo: string
@@ -63,8 +72,10 @@ export type Dict = {
     named: (name: string) => string
     nameCleared: string
     paneOpened: string
+    paneClosed: string
     paneNotPlaced: string
     sessionsOpened: string
+    sessionsClosed: string
     sessionsNotPlaced: string
     paneTitle: string
     sessionsTitle: string
@@ -73,6 +84,19 @@ export type Dict = {
     languageFailed: (why: string) => string
     initDone: (dir: string) => string
     initExists: (dir: string) => string
+    /** The folder was there, but the CLAUDE.md line was added now. */
+    initExistsShort: (dir: string) => string
+    /** The line `/progress init` adds to an existing CLAUDE.md (in the language in use). */
+    claudeLine: string
+    claudeAdded: (file: string, line: string) => string
+    claudePresent: (file: string) => string
+    /** The consent question (ends in a question mark) and its two answers. */
+    claudeAsk: (file: string, line: string) => string
+    claudeYes: string
+    claudeNo: string
+    claudeDeclined: (file: string, line: string) => string
+    claudeTip: (line: string) => string
+    claudeFailed: (file: string, why: string) => string
     initNoRepo: string
     initFailed: (why: string) => string
   }
@@ -121,6 +145,8 @@ export type Dict = {
     noPackage: string
     thisSession: string
     sessionId: (id: string) => string
+    /** Marks a session whose checkout is a linked worktree. */
+    worktree: string
     orphans: (n: number) => string
     orphansHint: string
     closed: (n: number) => string
@@ -173,7 +199,10 @@ const en: Dict = {
   n: {
     phaseDone: (pkg, phase) => `✓ ${pkg}: ${phase} done`,
     waiting: (pkg, what) => `⏸ ${pkg}: waiting on you — ${what}`,
+    elsewhere: (where, what) => `⏸ ${where}: waiting on you — ${what}`,
   },
+  dec: { permission: (tool) => `permission: ${tool}`, question: 'a question', plan: 'plan approval' },
+  a: { label: 'Subagents', running: (n) => `${n} running`, done: (n) => `${n} done`, failed: (n) => `${n} failed` },
   auditLine: (round, by, verdict) => `round ${round} · ${by} · ${verdict}`,
   noRepo: 'no git repository found (looking up from the session folder)',
   scanFailed: (msg) => `scan failed: ${msg}`,
@@ -183,7 +212,7 @@ const en: Dict = {
   c: {
     progressDescription: "This session's work package progress. Sub-commands: init · refresh · bind <package> · unbind · name <session name> · language en|tr",
     progressHint: '[init | refresh | bind <package> | unbind | name <name> | language en|tr]',
-    sessionsDescription: 'Work package progress of every open session, one by one.',
+    sessionsDescription: 'Work package progress of every open session, one by one (again: closes the panel).',
     noRecord: 'The session record could not be set up; binding and naming do not work in this session (the band and the panel do).',
     bindUsage: 'Usage: /progress bind <package>',
     bound: (pkg) => `This session is bound to "${pkg}".`,
@@ -192,8 +221,10 @@ const en: Dict = {
     named: (name) => `Session name: ${name}`,
     nameCleared: 'Session name removed.',
     paneOpened: 'Progress panel opened.',
+    paneClosed: 'Progress panel closed.',
     paneNotPlaced: 'The progress panel could not be placed; the band is above the prompt.',
     sessionsOpened: 'Sessions panel opened.',
+    sessionsClosed: 'Sessions panel closed.',
     sessionsNotPlaced: 'The sessions panel could not be placed.',
     paneTitle: 'Progress',
     sessionsTitle: 'Sessions',
@@ -202,6 +233,16 @@ const en: Dict = {
     languageFailed: (why) => `The language could not be changed: ${why}`,
     initDone: (dir) => `Created ${dir}/ — commit it with the project. Now ask Claude to track a multi-step task, e.g. "plan this and track it with session-progress".`,
     initExists: (dir) => `${dir}/ already exists; nothing to do.`,
+    initExistsShort: (dir) => `${dir}/ already exists.`,
+    claudeLine: 'Track multi-step work (3+ steps) with session-progress.',
+    claudeAdded: (file, line) => `Added to ${file}: "${line}" — from the next session on, Claude tracks multi-step work without being asked.`,
+    claudePresent: (file) => `${file} already mentions session-progress; left as it is.`,
+    claudeAsk: (file, line) => `With this line in ${file}, Claude tracks multi-step work in this project without being asked: "${line}" Add it to the end of ${file}?`,
+    claudeYes: 'Add the line',
+    claudeNo: "Don't add",
+    claudeDeclined: (file, line) => `${file} left as it is. To add it yourself later: "${line}"`,
+    claudeTip: (line) => `Tip: to have work tracked without asking, add this line to the project's CLAUDE.md: "${line}"`,
+    claudeFailed: (file, why) => `${file} could not be updated (${why}); add the line by hand.`,
     initNoRepo: 'Not in a git repository; session-progress works per repository.',
     initFailed: (why) => `The packages folder could not be created: ${why}`,
   },
@@ -247,6 +288,7 @@ const en: Dict = {
     noPackage: 'no bound package',
     thisSession: ' (this)',
     sessionId: (id) => `session ${id}`,
+    worktree: 'worktree',
     orphans: (n) => `Unowned packages · ${n}`,
     orphansHint: '  (not bound to an open session)',
     closed: (n) => `${n} closed sessions hidden  ·  `,
@@ -299,7 +341,10 @@ const tr: Dict = {
   n: {
     phaseDone: (pkg, phase) => `✓ ${pkg}: ${phase} tamamlandı`,
     waiting: (pkg, what) => `⏸ ${pkg}: sende bekliyor — ${what}`,
+    elsewhere: (where, what) => `⏸ ${where}: sende bekliyor — ${what}`,
   },
+  dec: { permission: (tool) => `izin: ${tool}`, question: 'soru', plan: 'plan onayı' },
+  a: { label: 'Alt ajanlar', running: (n) => `${n} çalışıyor`, done: (n) => `${n} bitti`, failed: (n) => `${n} hatalı` },
   auditLine: (round, by, verdict) => `${round}. tur · ${by} · ${verdict}`,
   noRepo: 'git deposu bulunamadı (oturum dizininden yukarı)',
   scanFailed: (msg) => `tarama başarısız: ${msg}`,
@@ -309,7 +354,7 @@ const tr: Dict = {
   c: {
     progressDescription: 'Bu oturumun iş paketi ilerlemesi. Alt komutlar: kur · yenile · bağla <paket> · çöz · ad <oturum adı> · dil en|tr',
     progressHint: '[kur | yenile | bağla <paket> | çöz | ad <ad> | dil en|tr]',
-    sessionsDescription: 'Açık oturumların iş paketi ilerlemesi, ayrı ayrı.',
+    sessionsDescription: 'Açık oturumların iş paketi ilerlemesi, ayrı ayrı (tekrar yazınca panel kapanır).',
     noRecord: 'Oturum kaydı kurulamadı; bağlama ve oturum adı bu oturumda çalışmıyor (şerit ve /ilerleme çalışır).',
     bindUsage: 'Kullanım: /ilerleme bağla <paket>',
     bound: (pkg) => `Bu oturum "${pkg}" paketine bağlandı.`,
@@ -318,8 +363,10 @@ const tr: Dict = {
     named: (name) => `Oturum adı: ${name}`,
     nameCleared: 'Oturum adı kaldırıldı.',
     paneOpened: 'İlerleme paneli açıldı.',
+    paneClosed: 'İlerleme paneli kapatıldı.',
     paneNotPlaced: 'İlerleme paneli yerleşemedi; şerit prompt üstünde.',
     sessionsOpened: 'Oturumlar paneli açıldı.',
+    sessionsClosed: 'Oturumlar paneli kapatıldı.',
     sessionsNotPlaced: 'Oturumlar paneli yerleşemedi.',
     paneTitle: 'İlerleme',
     sessionsTitle: 'Oturumlar',
@@ -328,6 +375,16 @@ const tr: Dict = {
     languageFailed: (why) => `Dil değiştirilemedi: ${why}`,
     initDone: (dir) => `${dir}/ oluşturuldu — projeyle birlikte commit'le. Şimdi Claude'dan çok adımlı bir işi takip etmesini iste, örn. "bunu planla ve session-progress ile takip et".`,
     initExists: (dir) => `${dir}/ zaten var; yapılacak bir şey yok.`,
+    initExistsShort: (dir) => `${dir}/ zaten var.`,
+    claudeLine: 'Çok adımlı işleri (3+ adım) session-progress ile takip et.',
+    claudeAdded: (file, line) => `${file} dosyasına eklendi: "${line}" — bir sonraki oturumdan itibaren Claude çok adımlı işleri sen istemeden takip eder.`,
+    claudePresent: (file) => `${file} zaten session-progress'ten söz ediyor; dokunulmadı.`,
+    claudeAsk: (file, line) => `${file} dosyasında bu satır olursa Claude bu projede çok adımlı işleri sen istemeden takip eder: "${line}" Satır ${file} dosyasının sonuna eklensin mi?`,
+    claudeYes: 'Satırı ekle',
+    claudeNo: 'Ekleme',
+    claudeDeclined: (file, line) => `${file} dosyasına dokunulmadı. Sonra kendin eklemek istersen: "${line}"`,
+    claudeTip: (line) => `İpucu: işlerin sen istemeden takip edilmesi için projenin CLAUDE.md dosyasına şu satırı ekle: "${line}"`,
+    claudeFailed: (file, why) => `${file} güncellenemedi (${why}); satırı elle ekle.`,
     initNoRepo: 'Bir git deposunda değilsin; session-progress depo bazında çalışır.',
     initFailed: (why) => `Paket klasörü oluşturulamadı: ${why}`,
   },
@@ -373,6 +430,7 @@ const tr: Dict = {
     noPackage: 'bağlı paket yok',
     thisSession: ' (bu)',
     sessionId: (id) => `oturum ${id}`,
+    worktree: 'worktree',
     orphans: (n) => `Sahipsiz paketler · ${n}`,
     orphansHint: '  (açık bir oturuma bağlı değil)',
     closed: (n) => `${n} kapalı oturum gizli  ·  `,

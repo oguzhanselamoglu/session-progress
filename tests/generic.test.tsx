@@ -159,13 +159,15 @@ test('a repository without packages: both panels say how to start; /progress ini
   expect(files[sessionFile('self-1')], 'no record before init').toBeUndefined()
   const res = (await $.command.run({ command: 'progress', args: 'init' } as never)) as { text?: string }
   expect(res.text).toMatch(/^Created \.progress\/ — commit it with the project\./)
+  expect(res.text, 'no CLAUDE.md: nothing is created, the line is given as a tip').toMatch(/\nTip: .*CLAUDE\.md: "Track multi-step work \(3\+ steps\) with session-progress\."$/)
+  expect(files['/repo/CLAUDE.md']).toBeUndefined()
   expect(files['/repo/.progress/README.md']).toMatch(/^# Work packages/)
   expect(files[sessionFile('self-1')], 'the session record is written once the folder exists').toBeDefined()
   const ui = await $.ui.mount({ ...SESSIONS, surface: 'terminal' } as never)
   expect(await ui.find({ type: 'Text', text: /Open sessions · 1/ })).toBeDefined()
   await ui.unmount()
   const again = (await $.command.run({ command: 'progress', args: 'init' } as never)) as { text?: string }
-  expect(again.text).toBe('.progress/ already exists; nothing to do.')
+  expect(again.text).toMatch(/^\.progress\/ already exists; nothing to do\.\nTip: /)
   expect(files['/repo/.progress/README.md']).toMatch(/^# Work packages/)
 })
 
@@ -176,5 +178,50 @@ test('/ilerleme kur uses the project folder and answers in Turkish', async ($, o
   await start($)
   const res = (await $.command.run({ command: 'ilerleme', args: 'kur' } as never)) as { text?: string }
   expect(res.text).toMatch(/^docs\/work\/ oluşturuldu/)
+  expect(res.text, 'the CLAUDE.md tip').toMatch(/\nİpucu: .*CLAUDE\.md .*"Çok adımlı işleri \(3\+ adım\) session-progress ile takip et\."$/)
   expect(files['/repo/docs/work/README.md']).toBeDefined()
+})
+
+test('/progress init adds its line to an EXISTING CLAUDE.md only after the person says yes (appended, once); never creates one', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const files: Record<string, string> = { '/repo/CLAUDE.md': '# Project\n\nUse pnpm.' }
+  const asked: string[] = []
+  fakeRepo(on, files, { ...generic, asked, answer: (q, labels) => (labels.includes('Add the line') ? 'Add the line' : null) })
+  await start($)
+  const res = (await $.command.run({ command: 'progress', args: 'init' } as never)) as { text?: string }
+  expect(asked, 'the question shows the exact line and ends in a question mark').toEqual([
+    'With this line in CLAUDE.md, Claude tracks multi-step work in this project without being asked: "Track multi-step work (3+ steps) with session-progress." Add it to the end of CLAUDE.md?',
+  ])
+  expect(res.text).toMatch(/\nAdded to CLAUDE\.md: "Track multi-step work \(3\+ steps\) with session-progress\." — from the next session on/)
+  expect(files['/repo/CLAUDE.md']).toBe('# Project\n\nUse pnpm.\n\nTrack multi-step work (3+ steps) with session-progress.\n')
+  const again = (await $.command.run({ command: 'progress', args: 'init' } as never)) as { text?: string }
+  expect(again.text).toBe('.progress/ already exists; nothing to do.\nCLAUDE.md already mentions session-progress; left as it is.')
+  expect(files['/repo/CLAUDE.md']?.match(/session-progress/g)?.length, 'added once').toBe(1)
+  expect(asked.length, 'a file that already mentions it is not asked about again').toBe(1)
+})
+
+test('/progress init: declined or dismissed → CLAUDE.md untouched, the line given as text', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const original = '# Project\n'
+  const files: Record<string, string> = { '/repo/CLAUDE.md': original }
+  let reply: string | null = "Don't add"
+  fakeRepo(on, files, { ...generic, answer: () => reply })
+  await start($)
+  const declined = (await $.command.run({ command: 'progress', args: 'init' } as never)) as { text?: string }
+  expect(declined.text).toMatch(/\nCLAUDE\.md left as it is\. To add it yourself later: "Track multi-step work \(3\+ steps\) with session-progress\."$/)
+  reply = null
+  const dismissed = (await $.command.run({ command: 'progress', args: 'init' } as never)) as { text?: string }
+  expect(dismissed.text).toMatch(/\nTip: .*CLAUDE\.md/)
+  expect(files['/repo/CLAUDE.md']).toBe(original)
+})
+
+test('/ilerleme kur: an existing folder still gets the line, in Turkish, in .claude/CLAUDE.md when there is no root one', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const files: Record<string, string> = { '/repo/.claude/CLAUDE.md': 'Kurallar\n', '/repo/.progress/README.md': '# Work packages' }
+  fakeRepo(on, files, { ...generic, store: { language: 'tr' }, answer: (q, labels) => (labels.includes('Satırı ekle') && q.endsWith('eklensin mi?') ? 'Satırı ekle' : null) })
+  await start($)
+  const res = (await $.command.run({ command: 'ilerleme', args: 'kur' } as never)) as { text?: string }
+  expect(res.text).toMatch(/^\.progress\/ zaten var\.\n\.claude\/CLAUDE\.md dosyasına eklendi: "Çok adımlı işleri \(3\+ adım\) session-progress ile takip et\."/)
+  expect(files['/repo/.claude/CLAUDE.md']).toBe('Kurallar\n\nÇok adımlı işleri (3+ adım) session-progress ile takip et.\n')
+  expect(files['/repo/CLAUDE.md'], 'no root CLAUDE.md is created').toBeUndefined()
 })

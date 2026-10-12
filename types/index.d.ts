@@ -62,7 +62,7 @@ export type Snapshot = {
   reads: PackageRead[];
   /** Discovery error (e.g. the git folder could not be read), apart from package reads. */
   error: string | null;
-  /** Readable session records (`<main repo>/.git/session-progress/sessions/*.json`; broken ones are skipped). */
+  /** Readable session records (`<main repo>/.git/session-progress/sessions/*.json`; broken ones are skipped; `decision` always set). */
   sessions: SessionRecord[];
   /** Records counted as closed WITHOUT being read, because their file has not been written for a long time. */
   closedSessions: number;
@@ -92,6 +92,37 @@ export type SessionRecord = {
   package: string | null;
   /** `auto`: the session's own tool call wrote it · `manual`: `/progress bind` (auto-binding never overrides it). */
   bindSource: 'auto' | 'manual' | null;
+  /** A dialog open on the person right now (absent in records written by 0.3.x, which read as `null`). */
+  decision?: Decision | null;
+  /** The checkout's branch, read from git's `HEAD` (`null` when detached or unknown; absent in 0.3.x records). */
+  branch?: string | null;
+  /** Whether the checkout is a linked worktree, not the main checkout (absent in 0.3.x records). */
+  worktree?: boolean;
+  /** Subagents this session started: running ones, and the finished ones of the current turn (absent in 0.3.x records). */
+  agents?: AgentRun[];
+};
+
+/** One subagent a session started. Only the short task label is kept, never the prompt given to it. */
+export type AgentRun = {
+  /** The tool call that started it. */
+  id: string;
+  /** The 3–5 word task label the model gave it. */
+  description: string;
+  status: 'running' | 'done' | 'failed';
+  /** The id of an agent running in the background (its end arrives as SubagentStop). */
+  agentId?: string;
+};
+
+/**
+ * What a session's open dialog asks of the person, kept language-neutral (each reader words it in its own language). Only the tool's
+ * NAME is kept, never its input (a command or a file's content never reaches the record).
+ */
+export type Decision = {
+  /** `permission`: a permission prompt · `question`: AskUserQuestion · `plan`: a plan to approve (ExitPlanMode). */
+  kind: 'permission' | 'question' | 'plan';
+  tool: string;
+  /** When the dialog opened (ISO): a new dialog has a new time, so it is announced again. */
+  since: string;
 };
 
 declare module 'claude-code' {
