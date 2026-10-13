@@ -22,6 +22,8 @@
   başlayınca da: orada bir izin isteği, soru ya da plan onayı açılınca ya da paketinin kararı sana geçince.
 - **Açık pencere de beklemedir:** izin isteği, soru ya da plan onayı gösteren oturum, hiçbir pakete bağlı olmasa da `/oturumlar`
   panelinde ve şeridin sayacında sende bekliyor görünür.
+- **Diğer projeler (varsayılan kapalı):** `/oturumlar tümü` ile açınca `/oturumlar` diğer projelerdeki açık oturumlarını da paketlerinin
+  ilerlemesiyle gösterir; biri seni beklemeye başlayınca bildirim gelir. Bkz. [Diğer projelerdeki oturumlar](#diğer-projelerdeki-oturumlar).
 
 Aynı anda birden çok oturumla (worktree'ler, paralel özellikler, ajanlar) çalışırken hangisinin seni beklediğini tek bakışta görmek
 için yapıldı.
@@ -115,7 +117,40 @@ eklemen için gösterir. Bir sonraki oturumdan itibaren geçerli olur.
 - Kartları kolay ayırt etmek için her oturuma ad ver: `/ilerleme ad API işi`.
 - Herhangi birinde `/oturumlar`'ı aç: seni bekleyenler en üstte, neyi beklediğiyle (bir paketin kararı, bir izin isteği, bir soru ya da
   bir plan onayı). Başka bir oturum seni beklemeye başlayınca burada da bildirim çıkar.
-- Aynı deponun farklı worktree'lerindeki oturumlar birbirini görür; ayrı depolar görmez.
+- Aynı deponun farklı worktree'lerindeki oturumlar birbirini görür. Başka depolardaki oturumlar yalnız diğer projeleri açarsan görünür
+  (sonraki bölüm).
+
+### Diğer projelerdeki oturumlar
+
+**Varsayılan olarak kapalı.** `/oturumlar` içinde bulunduğun deponun oturumlarını gösterir. Diğer projelerdeki oturumlarını da izlemek
+için diğer projeleri herhangi bir oturumdan aç:
+
+```
+/oturumlar tümü    # aç     (English: /sessions all)
+/oturumlar bu      # kapat  (English: /sessions this)
+```
+
+Bu seçim projenin değil senindir: eklentinin kendi deposunda tutulur ve tüm oturumlarında geçerli olur (zaten açık olanlar 30 saniye
+içinde fark eder). İki dilin kelimesi de çalışır.
+
+Açıkken:
+
+- `/oturumlar`, bu projenin oturumlarının altında bir **Diğer projeler** bölümü gösterir: açık oturumu olan her proje ve her oturum,
+  buradakiyle aynı kartla (durum, sende bekleyen pencere, bağlı paket ve ilerleme çubuğu, aşamalar, şu an ne yapıldığı ve sıradaki,
+  alt ajanlar, branch). Sende bir şey bekleyen projeler önce gelir; panelin en üstündeki bir satır da bunu söyler.
+- Başka bir projedeki oturum seni beklemeye başlayınca (bir izin isteği, bir soru, onaylanacak bir plan ya da paketinin kararı) projeyi
+  ve oturumu adıyla anan bir bildirim gelir: `⏸ shop › API işi: sende bekliyor — soru`. Şeritteki "başka oturumda sende bekliyor"
+  sayacı bunları da sayar ve oturumlar paneli, bu projede olduğu gibi kendiliğinden açılır.
+- Diğerlerinin görebilmesi için açık oturumu olan her proje, Claude Code yapılandırma klasörüne küçük bir dosya yazar:
+  `~/.claude/session-progress/projects/<klasör>-<hash>.json` (`$CLAUDE_CONFIG_DIR` tanımlıysa onun altında). İçinde projenin yolu,
+  paket klasörü, kabul ettiği şema adları ve en son ne zaman görüldüğü vardır — başka bir şey yok. Bütün oturumları kapanan proje birkaç
+  dakika sonra gösterilmez olur.
+
+Panelin son satırı diğer projelerin açık mı kapalı mı olduğunu ve nasıl değiştirileceğini her zaman söyler. Kapatınca proje dışına
+yazma hemen durur (diğer açık oturumlarda bir sonraki sinyalde). Geride kalan proje dosyaları birkaç dakika eskiyince yok sayılır;
+`~/.claude/session-progress/` klasörünü istediğin zaman silebilirsin.
+
+Yalnız eklentiyi kullanan projeler (paket klasörü olanlar) ve bu özelliği içeren sürümü çalıştıran oturumlar katılır.
 
 ### İpuçları
 
@@ -137,7 +172,8 @@ git onu izlemez. Oturumlar paneli bu kayıtlardan kurulur. Kayıt oturum başın
 kapanınca, bir alt ajan başlayıp bitince ve 30 saniyede bir tazelenir. Diğer oturumların kayıtları 5 saniyede bir okunur (dosyası
 değişmeyen kayıt yeniden okunmaz); böylece bir oturumdaki pencere diğerlerine saniyeler içinde ulaşır. 3 dakikadır ses vermeyen ya da
 kapanmış oturum kapalı sayılır. Kayıtlar yalnızca paket klasörü olan depolarda yazılır; başka
-projelere dokunulmaz.
+projelere dokunulmaz. Diğer projeler açıkken (`/oturumlar tümü`, varsayılan kapalı) böyle her proje Claude Code yapılandırma klasörüne
+küçük bir dosya da bırakır ve her oturum diğer projelerin kayıtlarını aynı şekilde okur.
 
 ### Neyi okur, neyi yazar
 
@@ -151,6 +187,9 @@ Her şey senin makinende kalır: eklenti ağ isteği yapmaz ve hiçbir kimlik bi
 | okur | checkout'un git `HEAD` dosyası | branch'i, oturumun kartında gösterilir |
 | yazar | `.git/session-progress/sessions/<oturum kimliği>.json` | oturum başına küçük bir kayıt: ad, checkout, bağlı paket, son sinyal, branch, worktree olup olmadığı, sende açık pencerenin türüyle aracın adı (`izin: Bash`; komut ya da aracın girdisi asla yazılmaz) ve alt ajanlarının kısa iş etiketleriyle durumları (prompt'ları asla). Git, `.git` içindeki tanımadığı klasörleri yok sayar; hiçbir şey commit'lenmez. Yalnız paket klasörü olan depolarda yazılır. |
 | yazar | `<packagesDir>/README.md` | yalnız `/ilerleme kur` çalıştırınca ve mevcut bir klasörün üzerine asla |
+| okur | `~/.claude/session-progress/projects/*.json`, sonra listelenen her projenin `.git/session-progress/sessions/*.json` dosyaları ve açık oturumlarının bağlı olduğu `progress.json` | yalnız diğer projeler açıkken (`/oturumlar tümü`): diğer projelerindeki oturumlar ve paketler |
+| okur | `CLAUDE_CONFIG_DIR`, `HOME` ve `USERPROFILE` ortam değişkenleri | Claude Code yapılandırma klasörünü bulmak için |
+| yazar | `~/.claude/session-progress/projects/<klasör>-<hash>.json` | yalnız diğer projeler açıkken: projenin yolu, paket klasörü, kabul ettiği şema adları ve en son ne zaman görüldüğü; diğer projelerdeki oturumların onu bulabilmesi için |
 | yazar | `CLAUDE.md` ya da `.claude/CLAUDE.md` | yalnız `/ilerleme kur` çalıştırınca, dosya zaten varsa ve sorulduğunda "evet" dersen: sonuna bir satır eklenir (bkz. [Kullanım](#kullanım)); session-progress'ten söz eden dosyaya dokunulmaz |
 
 Bunlardan yalnız `CLAUDE.md` Claude'un talimat olarak izlediği bir dosyadır ve eklenti ona yalnız sen evet dersen ekler.
@@ -167,7 +206,7 @@ engellemez; bildirim olduğu gibi geçer. Agent üzerindeki aynı `tool.call` ve
 ajanın ne zaman başlayıp bittiğini **izler**; SubagentStop'un sonucu olduğu gibi geçer. `classic.PostToolUse`, çağrının az önce
 **yazdığı** bir `progress.json`'u denetler (yalnızca okuduğunu asla): şemaya uymuyorsa Claude için dosyayı ve ilk sorunu söyleyen tek
 bir satır ekler, böylece yazan onu aynı turda düzeltir; aracın sonucu asla değişmez. `ui.render` şeridi ve iki paneli çizer. Eklenti iki komut kaydeder
-(`/ilerleme`, `/oturumlar`; İngilizcede `/progress`, `/sessions`) ve dil seçimini kendi deposunda tutar.
+(`/ilerleme`, `/oturumlar`; İngilizcede `/progress`, `/sessions`) ve dil ile diğer projeler seçimini kendi deposunda tutar.
 
 ### `progress.json`
 
@@ -224,8 +263,8 @@ Varsayılan dil İngilizcedir. Herkes kendisi değiştirebilir; seçim sonraki t
 
 | Dil | Komutlar | Alt komutlar |
 |---|---|---|
-| English | `/progress`, `/sessions` | `init` · `refresh` · `bind <package>` · `unbind` · `name <name>` · `language en\|tr` |
-| Türkçe | `/ilerleme`, `/oturumlar` | `kur` · `yenile` · `bağla <paket>` · `çöz` · `ad <ad>` · `dil en\|tr` |
+| English | `/progress`, `/sessions` | `/progress`: `init` · `refresh` · `bind <package>` · `unbind` · `name <name>` · `language en\|tr` — `/sessions`: `all` · `this` |
+| Türkçe | `/ilerleme`, `/oturumlar` | `/ilerleme`: `kur` · `yenile` · `bağla <paket>` · `çöz` · `ad <ad>` · `dil en\|tr` — `/oturumlar`: `tümü` · `bu` |
 
 Alt komutlar iki dilde de anlaşılır; diğer dilin kelimesini yazsan da çalışır. Claude'un `progress.json`'a yazdığı başlıklar ve notlar,
 onunla konuştuğun dilde olur.

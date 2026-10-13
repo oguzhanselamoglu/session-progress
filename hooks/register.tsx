@@ -1,8 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { AgentRun, Decision, PackageRead, ProgressDoc, ProjectConfig, SessionRecord, Snapshot } from '../types'
-import { DICTS, LANGS, SUB_ALIASES, resolveLang, type Dict, type Lang } from './i18n'
+import type { AgentRun, Decision, ForeignProject, PackageRead, ProgressDoc, ProjectConfig, SessionRecord, Snapshot } from '../types'
+import { DICTS, LANGS, SCOPE_ALIASES, SUB_ALIASES, resolveLang, type Dict, type Lang } from './i18n'
 import {
   STATUS_VIEW,
   auditLine,
@@ -39,15 +39,21 @@ import {
   ANY_TOOL,
   decisionFor,
   docsByPackage,
+  isOpen,
   labelOf,
   mentionsProgress,
   newSession,
   normPath,
   organizeSessions,
   othersWaitingOnUser,
+  type SessionRow,
   packageFromPath,
   packageKey,
+  parseProject,
   parseSession,
+  projectEntry,
+  projectFileName,
+  projectsDir,
   pruneAgents,
   settleAgent,
   startAgent,
@@ -79,6 +85,8 @@ const self = atom({ plugin: 'session-progress', key: 'self' } as const, null)
 const language = atom({ plugin: 'session-progress', key: 'language' } as const, 'en')
 /** `$.store` key of the person's language choice (kept across sessions). */
 const LANGUAGE_KEY = 'language'
+/** `$.store` key of the person's choice to see other projects too (`/sessions all`); off unless they turned it on. */
+const SCOPE_KEY = 'otherProjects'
 
 type Env = EngineInterface
 
@@ -120,6 +128,9 @@ const agentsText = (agents: readonly AgentRun[] | undefined): { head: string; na
   if (s.failed) parts.push(a.failed(s.failed))
   return { head: `⑂ ${a.label}: ${parts.join(' · ')}`, names: s.running.map((x) => x.description).join(', ') }
 }
+/** What waits on the person in other projects' open sessions (0 while other projects are off). */
+const foreignWaitingCount = (snap: Snapshot, now: number): number =>
+  (snap.foreign ?? []).reduce((n, p) => n + othersWaitingOnUser(p.sessions, null, p.reads, now, segmentOf(p.packagesDir)), 0)
 const decisionText = (x: Decision): string =>
   x.kind === 'permission' ? (x.tool === ANY_TOOL ? t().dec.permissionAny : t().dec.permission(x.tool)) : t().dec[x.kind]
 
@@ -171,6 +182,18 @@ let sessionsPaneOpen = false
 let sessionsPaneDismissed = false
 /** The last full scan's error (discovery or project config), carried by quick refreshes. */
 let lastScanError: string | null = null
+
+// ── Other projects (only while the person has them on) ────────────────────────────────────────────────────────────────
+/** Whether the person turned other projects on (`$.store`, read again at every heartbeat: a switch in one session reaches all). */
+let allProjects = false
+/** The person's Claude Code configuration folder (`CLAUDE_CONFIG_DIR`, else `~/.claude`); `null` when it cannot be found. */
+let configDir: string | null = null
+/** Other projects' open sessions at the last read. */
+let foreign: ForeignProject[] = []
+/** Other projects' files at the last read: path → modification time and what was read (read again only when the time moved). */
+let foreignCache = new Map<string, { mtimeMs: number; value: unknown }>()
+/** Other projects' waiting state at the last pass, per project: a project seen for the first time announces nothing. */
+let foreignSeen = new Map<string, Record<string, [string, string]>>()
 
 async function findCheckoutRoot($: Env): Promise<string | null> {
   let dir = normPath(await $.session.cwd()).replace(/\/+$/, '')
@@ -340,15 +363,168 @@ function refreshSessions($: Env): Promise<void> {
 
 async function refreshSessionsNow($: Env): Promise<void> {
   await trackSessionsPane($)
-  if (!mainRoot || !registryOn) return
+  const local = !!mainRoot && registryOn
+  if (!local && !allProjects && !foreign.length) return
   const now = await $.clock.now()
   const { records, closedUnread, sig } = await readSessions($, now, true)
-  if (sig === recordSig) return
-  recordSig = sig
+  const foreignSig = await readForeign($, now, true)
+  if (`${sig}#${foreignSig}` === recordSig) return
+  recordSig = `${sig}#${foreignSig}`
   const snap = await read($, snapshot)
   if (!snap) return
-  await update($, snapshot, () => ({ ...snap, sessions: records, closedSessions: closedUnread }))
-  await notifyElsewhere($, records, snap.reads, now)
+  await update($, snapshot, () => ({ ...snap, sessions: records, closedSessions: closedUnread, foreign }))
+  if (local) await notifyElsewhere($, records, snap.reads, now)
+  await notifyForeign($, now)
+}
+
+/**
+ * Other projects' open sessions (only while they are on): the project files (a stale one is skipped unread), each project's records,
+ * and the package file each open session there is bound to — read again only when a file's time moved. Returns what was read, as a
+ * signature (unchanged → nothing to draw again). This project's own file is skipped: its sessions are read the usual way.
+ */
+async function readForeign($: Env, now: number, cached: boolean): Promise<string> {
+  if (!allProjects || !configDir) {
+    foreign = []
+    foreignCache = new Map()
+    return ''
+  }
+  const dir = projectsDir(configDir)
+  let entries: readonly { name: string; kind: string; mtimeMs: number }[]
+  try {
+    entries = await $.fs.list(dir)
+  } catch {
+    foreign = []
+    return '' // no project has written one yet
+  }
+  const next = new Map<string, { mtimeMs: number; value: unknown }>()
+  const get = async <T,>(path: string, mtimeMs: number, parse: (text: string) => T | null): Promise<T | null> => {
+    const hit = foreignCache.get(path)
+    let value: T | null = null
+    if (cached && hit && hit.mtimeMs === mtimeMs) {
+      value = hit.value as T | null
+    } else {
+      try {
+        const text = await $.fs.read(path)
+        value = typeof text === 'string' ? parse(text) : null
+      } catch {
+        // half-written or gone: read again once its time moves
+      }
+    }
+    next.set(path, { mtimeMs, value })
+    return value
+  }
+  const fresh = (mtimeMs: number): boolean => now - mtimeMs <= OPEN_MS + 60_000
+  /** This project's own file (spelt as project files are: forward slashes, no trailing one) is never listed as another project. */
+  const ownRoot = mainRoot ? normPath(mainRoot).replace(/\/+$/, '') : null
+  const parts: string[] = []
+  const out: ForeignProject[] = []
+  for (const entry of entries) {
+    if (entry.kind !== 'file' || !entry.name.endsWith('.json') || !fresh(entry.mtimeMs)) continue
+    const project = await get(`${dir}/${entry.name}`, entry.mtimeMs, parseProject)
+    if (!project || project.root === ownRoot || Math.abs(now - Date.parse(project.lastSeen)) > OPEN_MS + 60_000) continue
+    const recDir = sessionsDir(project.root)
+    let recs: readonly { name: string; kind: string; mtimeMs: number }[]
+    try {
+      recs = await $.fs.list(recDir)
+    } catch {
+      continue
+    }
+    const sessions: SessionRecord[] = []
+    for (const r of recs) {
+      if (r.kind !== 'file' || !r.name.endsWith('.json') || !fresh(r.mtimeMs)) continue
+      parts.push(`${recDir}/${r.name}@${r.mtimeMs}`)
+      const rec = await get(`${recDir}/${r.name}`, r.mtimeMs, parseSession)
+      if (rec && isOpen(rec, now)) sessions.push(rec)
+    }
+    if (!sessions.length) continue
+    const reads: PackageRead[] = []
+    const segmentThere = segmentOf(project.packagesDir)
+    for (const name of new Set(sessions.map((x) => x.package).filter((x): x is string => !!x))) {
+      // The package in the checkout of a session bound to it (a worktree), and in the main checkout.
+      const checkouts = sessions.filter((x) => x.package === name).map((x) => x.checkout).filter((x): x is string => !!x)
+      for (const root of new Set([...checkouts, project.root])) {
+        const path = `${root}/${project.packagesDir}/${name}/progress.json`
+        let mtimeMs: number
+        try {
+          mtimeMs = (await $.fs.stat(path)).mtimeMs
+        } catch {
+          continue
+        }
+        parts.push(`${path}@${mtimeMs}`)
+        const r = await get(path, mtimeMs, (text): PackageRead => {
+          const parsed = parseDoc(text, t(), project.schemaAliases)
+          return 'doc' in parsed ? { ok: true, path, root, doc: parsed.doc } : { ok: false, path, root, error: parsed.error }
+        })
+        if (r && packageFromPath(r.path, segmentThere)) reads.push(r)
+      }
+    }
+    out.push({ root: project.root, name: baseName(project.root), packagesDir: project.packagesDir, sessions, reads })
+  }
+  foreignCache = next
+  foreign = out
+  return parts.join(',')
+}
+
+/**
+ * One notification when a session in ANOTHER project starts waiting on the person (only while other projects are on), naming the
+ * project, the session and what waits. A project seen for the first time announces nothing (what already waited is no news).
+ */
+async function notifyForeign($: Env, now: number): Promise<void> {
+  const next = new Map<string, Record<string, [string, string]>>()
+  let told = false
+  for (const p of foreign) {
+    const { alerts, seen: s } = waitingAlerts(p.sessions, null, p.reads, now, foreignSeen.get(p.root) ?? null, segmentOf(p.packagesDir))
+    next.set(p.root, s)
+    for (const { rec, decision, doc } of alerts) {
+      const label = labelOf(rec, t().s.sessionId)
+      if (decision) $.ui.toast(t().n.elsewhereProject(p.name, label, decisionText(decision)), { timeoutMs: 8000 })
+      if (doc) $.ui.toast(t().n.elsewhereProject(p.name, label, `${doc.title}: ${waitingWhat(doc)}`), { timeoutMs: 8000 })
+      told = true
+    }
+  }
+  foreignSeen = next
+  if (told) await autoOpenSessions($)
+}
+
+/** The person's Claude Code configuration folder: `CLAUDE_CONFIG_DIR`, else `.claude` in the home folder; `null` when neither is known. */
+async function findConfigDir($: Env): Promise<string | null> {
+  try {
+    const own = await $.env.get('CLAUDE_CONFIG_DIR')
+    if (own) return normPath(own).replace(/\/+$/, '')
+    const home = (await $.env.get('HOME')) || (await $.env.get('USERPROFILE'))
+    return home ? `${normPath(home).replace(/\/+$/, '')}/.claude` : null
+  } catch {
+    return null
+  }
+}
+
+/** The person's other-projects choice, from the plugin's store (a switch made in another session is picked up here). */
+async function loadScope($: Env): Promise<void> {
+  let on = false
+  try {
+    on = (await $.store.get(SCOPE_KEY)) === true
+  } catch {
+    on = allProjects // unknown: keep what was in use
+  }
+  if (!on && allProjects) {
+    foreign = []
+    foreignSeen = new Map()
+  }
+  allProjects = on
+}
+
+/**
+ * Tells other projects' sessions that this project has an open session: its file under the configuration folder (where it is and its
+ * packages folder, nothing else). Only while other projects are on, and only in a project whose sessions keep records.
+ */
+async function publishProject($: Env): Promise<void> {
+  if (!allProjects || !configDir || !mainRoot || !registryOn) return
+  try {
+    const entry = projectEntry(mainRoot, packagesDir, new Date(await $.clock.now()).toISOString(), schemaAliases)
+    await $.fs.write(`${projectsDir(configDir)}/${projectFileName(mainRoot)}`, `${JSON.stringify(entry, null, 2)}\n`)
+  } catch {
+    // other projects simply do not see this one until the next heartbeat
+  }
 }
 
 async function readAll($: Env, scanError: string | null): Promise<void> {
@@ -364,12 +540,14 @@ async function readAll($: Env, scanError: string | null): Promise<void> {
   }
   const now = await $.clock.now()
   const { records: sessions, closedUnread, sig } = await readSessions($, now)
-  recordSig = sig
+  const foreignSig = await readForeign($, now, false)
+  recordSig = `${sig}#${foreignSig}`
   const folder = folderExists === null ? null : { dir: packagesDir, exists: folderExists }
-  const snap: Snapshot = { readAt: now, cwdRoot, reads, error: scanError, sessions, closedSessions: closedUnread, folder }
+  const snap: Snapshot = { readAt: now, cwdRoot, reads, error: scanError, sessions, closedSessions: closedUnread, folder, foreign }
   await update($, snapshot, () => snap)
   await notify($, reads)
   await notifyElsewhere($, sessions, reads, now)
+  await notifyForeign($, now)
 }
 
 /**
@@ -509,6 +687,7 @@ async function refreshNow($: Env, full: boolean): Promise<void> {
       sessions: s?.sessions ?? [],
       closedSessions: s?.closedSessions ?? 0,
       folder: s?.folder ?? null,
+      foreign: s?.foreign ?? [],
     }))
   }
 }
@@ -740,10 +919,10 @@ async function registerCommands($: Env): Promise<void> {
   const c = t().c
   if (lang === 'tr') {
     await $.command.register({ name: 'ilerleme', description: c.progressDescription, argumentHint: c.progressHint })
-    await $.command.register({ name: 'oturumlar', description: c.sessionsDescription })
+    await $.command.register({ name: 'oturumlar', description: c.sessionsDescription, argumentHint: c.sessionsHint })
   } else {
     await $.command.register({ name: 'progress', description: c.progressDescription, argumentHint: c.progressHint })
-    await $.command.register({ name: 'sessions', description: c.sessionsDescription })
+    await $.command.register({ name: 'sessions', description: c.sessionsDescription, argumentHint: c.sessionsHint })
   }
 }
 
@@ -769,9 +948,16 @@ async function setLanguage($: Env, arg: string): Promise<{ text: string }> {
   return { text: DICTS[lang].c.languageNow }
 }
 
-/** The sessions command toggles its panel. Closing it by command also stops it opening unasked in this session; opening allows it again. */
-async function runSessions($: Env): Promise<{ text: string }> {
+/**
+ * The sessions command toggles its panel. Closing it by command also stops it opening unasked in this session; opening allows it again.
+ * `all` / `this` (either language) turn other projects on / off for all the person's sessions.
+ */
+async function runSessions($: Env, args: string): Promise<{ text: string }> {
   const c = t().c
+  const [word = ''] = args.trim().split(/\s+/)
+  const scope = SCOPE_ALIASES[word.toLocaleLowerCase('tr')] ?? SCOPE_ALIASES[word.toLowerCase()]
+  if (word && !scope) return { text: c.sessionsDescription }
+  if (scope) return setScope($, scope === 'all')
   if (await paneShown($, SESSIONS_PANE)) {
     await $.ui.close({ id: SESSIONS_PANE })
     sessionsPaneOpen = false
@@ -785,6 +971,38 @@ async function runSessions($: Env): Promise<{ text: string }> {
   return { text: opened.isPlaced ? c.sessionsOpened : c.sessionsNotPlaced }
 }
 
+/**
+ * Turns other projects on or off, for all the person's sessions (kept in the plugin's store; the others pick it up at their next
+ * heartbeat). On: this project is published at once and the sessions panel opens. Off: nothing is written outside the project any more.
+ */
+async function setScope($: Env, on: boolean): Promise<{ text: string }> {
+  const c = t().c
+  if (on && !configDir) return { text: c.scopeUnavailable }
+  try {
+    await $.store.set(SCOPE_KEY, on)
+  } catch (e) {
+    return { text: c.scopeFailed((e as Error).message) }
+  }
+  if (!on) {
+    foreign = []
+    foreignSeen = new Map()
+  }
+  allProjects = on
+  await publishProject($)
+  await refresh($, true)
+  if (on && configDir) {
+    try {
+      if (!(await paneShown($, SESSIONS_PANE))) await $.ui.open({ id: SESSIONS_PANE, title: c.sessionsTitle })
+      sessionsPaneOpen = true
+      sessionsPaneDismissed = false
+    } catch {
+      // the answer below still says how it works
+    }
+    return { text: c.scopeAll(projectsDir(configDir)) }
+  }
+  return { text: c.scopeThis }
+}
+
 export const register: Register = (on) => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
@@ -794,6 +1012,8 @@ export const register: Register = (on) => {
       lang = 'en'
     }
     await update($, language, () => lang)
+    configDir = await findConfigDir($)
+    await loadScope($)
     // Scanning does not depend on registering commands: the band works even if a registration is refused.
     await refresh($, true)
     try {
@@ -802,6 +1022,7 @@ export const register: Register = (on) => {
       // Without a session record binding and the sessions panel do not work, but the band and the progress panel do.
       $.ui.toast(t().recordSetupFailed((err as Error).message))
     }
+    await publishProject($)
     await refresh($, false)
     try {
       await registerCommands($)
@@ -811,7 +1032,10 @@ export const register: Register = (on) => {
     $.clock.every(QUICK_MS, () => {
       // The heartbeat never takes "ended" back; when the id changed `writeSelf` sets up the new record.
       void writeSelf($, (r, now) => (r.ended ? null : { ...r, lastSeen: now }))
-      void refresh($, false)
+      // Other projects: a switch made in another session is picked up here, and this project tells the others it is open.
+      void loadScope($)
+        .then(() => publishProject($))
+        .then(() => refresh($, false))
     })
     $.clock.every(FULL_MS, () => void refresh($, true))
     $.clock.every(SESSIONS_MS, () => void refreshSessions($))
@@ -948,7 +1172,7 @@ export const register: Register = (on) => {
   }).catch(($, e, next) => next(e))
 
   on('command.run', { command: ['progress', 'ilerleme'] }, async ($, e) => runProgress($, e.args))
-  on('command.run', { command: ['sessions', 'oturumlar'] }, async ($) => runSessions($))
+  on('command.run', { command: ['sessions', 'oturumlar'] }, async ($, e) => runSessions($, e.args))
 
   // ── Band: this session's package only ─────────────────────────────────────────────────────────────────────────────
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -960,10 +1184,19 @@ export const register: Register = (on) => {
     const d = t()
     const { errors } = organize(snap.reads)
     const mine = boundRead(snap.reads, me?.package ?? null, segment)
-    const waitingElsewhere = othersWaitingOnUser(snap.sessions, me, snap.reads, now, segment)
+    const foreignWaiting = foreignWaitingCount(snap, now)
+    const waitingElsewhere = othersWaitingOnUser(snap.sessions, me, snap.reads, now, segment) + foreignWaiting
     // In a repository without the packages folder (or outside one) the band is not drawn at all.
     if (snap.reads.length === 0 && !snap.error && waitingElsewhere === 0) return next(e)
     const { Box, Text } = $.ui.resolve(e)
+    // A project without work packages: only what waits on the person in other projects (shown only while they are on).
+    if (snap.reads.length === 0 && !snap.folder?.exists && foreignWaiting > 0) {
+      return (
+        <Box paddingX={1}>
+          <Text color="warning">{d.b.elsewhere(waitingElsewhere)}</Text>
+        </Box>
+      )
+    }
     const lines = []
     const counter = waitingElsewhere > 0 ? <Text color="warning">  ·  {d.b.elsewhere(waitingElsewhere)}</Text> : null
 
@@ -1150,6 +1383,8 @@ export const register: Register = (on) => {
     const { rows, closed, orphans } = organizeSessions(snap.sessions, me, snap.reads, now, snap.closedSessions, segment)
     const waiting = rows.filter((r) => r.status === 'user').length
     const unbound = rows.filter((r) => !r.rec.package).length
+    /** Other projects' owner labels are shown as written there (this project's display names do not apply). */
+    const ownerThere = (who: string): string => ownerLabel(who, d, {})
 
     const phaseStrip = (doc: ProgressDoc, k: string) => (
       <Text key={`ps-${k}`}>
@@ -1168,41 +1403,24 @@ export const register: Register = (on) => {
       )
     }
     /** What is happening in the package now: a decision waiting on the person, work another side waits on, or the running phase (+ next). */
-    const stateLines = (doc: ProgressDoc, k: string) => {
+    const stateLines = (doc: ProgressDoc, k: string, own: (who: string) => string) => {
       if (isComplete(doc)) return [<Text key={`st-${k}`} color="success">{d.s.completed}</Text>]
       const who = waitingWho(doc)
       if (who === 'user') return [<Text key={`st-${k}`} color="warning">{d.s.waitingFor(waitingWhat(doc))}</Text>]
       const cur = currentPhase(doc)
       const lines = [
         doc.waitingOn
-          ? <Text key={`st-${k}`}>⧗ {owner(doc.waitingOn.who)}: {doc.waitingOn.what}</Text>
-          : <Text key={`st-${k}`}>{d.s.now(cur?.title ?? '—')}{who ? <Text dimColor>  ·  {owner(who)}</Text> : null}</Text>,
+          ? <Text key={`st-${k}`}>⧗ {own(doc.waitingOn.who)}: {doc.waitingOn.what}</Text>
+          : <Text key={`st-${k}`}>{d.s.now(cur?.title ?? '—')}{who ? <Text dimColor>  ·  {own(who)}</Text> : null}</Text>,
       ]
       const idx = cur ? doc.phases.indexOf(cur) : -1
       const nextPh = doc.phases.slice(idx + 1).find((ph) => ph.status === 'pending')
       if (nextPh) lines.push(<Text key={`nx-${k}`} dimColor>{d.s.next(nextPh.title)}</Text>)
       return lines
     }
-
-    if (snap.folder && !snap.folder.exists) {
-      // A repository that does not use the plugin yet: no records are kept, so there is nothing to list — say how to start.
-      return (
-        <Box flexDirection="column">
-          <Text bold>{d.p.noFolder(snap.folder.dir)}</Text>
-          <Text dimColor>{d.p.noFolderHint}</Text>
-        </Box>
-      )
-    }
-    const out = [
-      <Text key="hd">
-        <Text bold>{d.s.open(rows.length)}</Text>
-        {waiting ? <Text color="warning" bold>{d.s.waitingYou(waiting)}</Text> : null}
-        {unbound ? <Text dimColor>{d.s.unbound(unbound)}</Text> : null}
-      </Text>,
-    ]
-    for (const row of rows) {
+    /** One session's card: the same for this project and another one (`k`: unique across projects). */
+    const card = (row: SessionRow, k: string, own: (who: string) => string) => {
       const { rec, doc } = row
-      const k = rec.id
       const tone = row.status === 'user' ? 'warning' : row.status === 'busy' ? 'claude' : undefined
       const status =
         row.status === 'user' ? (
@@ -1217,7 +1435,7 @@ export const register: Register = (on) => {
       ]
       if (rec.decision) body.push(<Text key={`d-${k}`} color="warning">{d.s.waitingFor(decisionText(rec.decision))}</Text>)
       if (doc) {
-        body.push(<Text key={`t-${k}`} bold color="claude">{doc.title}</Text>, progressLine(doc, k, 12), phaseStrip(doc, k), ...stateLines(doc, k))
+        body.push(<Text key={`t-${k}`} bold color="claude">{doc.title}</Text>, progressLine(doc, k, 12), phaseStrip(doc, k), ...stateLines(doc, k, own))
       } else {
         body.push(<Text key={`t-${k}`} dimColor>{rec.package ? d.s.notFound(rec.package) : d.s.noPackage}</Text>)
       }
@@ -1236,12 +1454,70 @@ export const register: Register = (on) => {
           {rec.branch ? `  ·  ⎇ ${rec.branch}` : ''}{rec.worktree ? ` (${d.s.worktree})` : ''}
         </Text>,
       )
-      out.push(
+      return (
         <Box key={`card-${k}`} flexDirection="column" borderStyle="round" borderColor={tone} borderDimColor={!tone} paddingX={1} marginTop={1}>
           {body}
-        </Box>,
+        </Box>
       )
     }
+
+    // Other projects (only while they are on): projects with something waiting on the person first, then the most recently active.
+    const foreignRows = (snap.foreign ?? [])
+      .map((p) => ({ p, rows: organizeSessions(p.sessions, null, p.reads, now, 0, segmentOf(p.packagesDir)).rows }))
+      .filter((x) => x.rows.length > 0)
+      .map((x) => ({ ...x, waiting: x.rows.filter((r) => r.status === 'user').length, last: Math.max(...x.rows.map((r) => Date.parse(r.rec.lastSeen))) }))
+      .sort((a, b) => b.waiting - a.waiting || b.last - a.last)
+    const foreignWaiting = foreignRows.reduce((n, x) => n + x.waiting, 0)
+    const foreignSection = []
+    if (allProjects) {
+      foreignSection.push(
+        <Box key="fp-h" marginTop={1}>
+          <Text bold>{d.s.otherProjects(foreignRows.length)}</Text>
+          {foreignWaiting ? <Text color="warning" bold>{d.s.waitingYou(foreignWaiting)}</Text> : null}
+        </Box>,
+      )
+      if (!foreignRows.length) foreignSection.push(<Text key="fp-none" dimColor>{d.s.noOtherProjects}</Text>)
+      for (const { p, rows: prow } of foreignRows) {
+        foreignSection.push(
+          <Box key={`fp-${p.root}`} marginTop={1}>
+            <Text>
+              <Text bold color="claude">▸ {p.name}</Text>
+              <Text dimColor>  ·  {d.s.open(prow.length)}</Text>
+            </Text>
+          </Box>,
+        )
+        for (const row of prow) foreignSection.push(card(row, `${p.root}|${row.rec.id}`, ownerThere))
+      }
+    }
+    const footer = (
+      <Box key="ft" flexDirection="column" marginTop={1}>
+        <Text dimColor>{closed ? d.s.closed(closed) : ''}{d.s.read(shortDate(new Date(snap.readAt).toISOString()))}</Text>
+        <Text dimColor>{d.s.hint}</Text>
+        <Text dimColor>{allProjects ? d.s.scopeOn : d.s.scopeOff}</Text>
+      </Box>
+    )
+
+    if (snap.folder && !snap.folder.exists) {
+      // A repository that does not use the plugin yet: no records are kept, so there is nothing to list — say how to start.
+      return (
+        <Box flexDirection="column">
+          <Text bold>{d.p.noFolder(snap.folder.dir)}</Text>
+          <Text dimColor>{d.p.noFolderHint}</Text>
+          {foreignSection}
+          {allProjects ? footer : null}
+        </Box>
+      )
+    }
+    const out = [
+      <Text key="hd">
+        <Text bold>{d.s.open(rows.length)}</Text>
+        {waiting ? <Text color="warning" bold>{d.s.waitingYou(waiting)}</Text> : null}
+        {unbound ? <Text dimColor>{d.s.unbound(unbound)}</Text> : null}
+      </Text>,
+    ]
+    // What waits on the person in another project is said at the top too: the cards are further down.
+    if (foreignWaiting) out.push(<Text key="fw" color="warning" bold>{d.s.otherWaiting(foreignWaiting)}</Text>)
+    for (const row of rows) out.push(card(row, row.rec.id, owner))
     if (orphans.length) {
       out.push(
         <Box key="oh" marginTop={1}>
@@ -1259,12 +1535,7 @@ export const register: Register = (on) => {
         )
       }
     }
-    out.push(
-      <Box key="ft" flexDirection="column" marginTop={1}>
-        <Text dimColor>{closed ? d.s.closed(closed) : ''}{d.s.read(shortDate(new Date(snap.readAt).toISOString()))}</Text>
-        <Text dimColor>{d.s.hint}</Text>
-      </Box>,
-    )
+    out.push(...foreignSection, footer)
     return <Box flexDirection="column">{out}</Box>
   })
 }

@@ -68,6 +68,22 @@ export type Snapshot = {
   closedSessions: number;
   /** The packages folder (relative) and whether any checkout has it; `null` outside a git repository. */
   folder: { dir: string; exists: boolean } | null;
+  /** Open sessions of OTHER projects (only while the person has them on, `/sessions all`; empty otherwise). */
+  foreign: ForeignProject[];
+};
+
+/** Another project with open sessions: its records and, for each bound package, its file as read. */
+export type ForeignProject = {
+  /** Main checkout root (the project's key). */
+  root: string;
+  /** Its folder name, as shown. */
+  name: string;
+  /** Its packages folder (relative), from its project file. */
+  packagesDir: string;
+  /** Its open sessions' records. */
+  sessions: SessionRecord[];
+  /** The package files its open sessions are bound to. */
+  reads: PackageRead[];
 };
 
 /** `session-progress-session-v1` — one Claude Code session's record; only that session's plugin writes it. */

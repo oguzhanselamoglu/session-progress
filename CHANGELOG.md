@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.0 — 2026-10-13
+
+**Sessions in other projects**, off by default. `/sessions all` (`/oturumlar tümü`) turns them on for all your sessions, `/sessions this`
+(`/oturumlar bu`) turns them off; the choice is kept in the plugin's store and open sessions pick it up within 30 seconds.
+
+- `/sessions` lists, below this project's sessions, each other project with open sessions and each session as the same card as here:
+  status, the dialog waiting on you, the bound package with its bar, phases, now and next, subagents, branch. Projects with something
+  waiting on you come first, and a line at the top says so. The panel's last line tells whether other projects are on and how to switch.
+- A toast names the project and the session when one there starts waiting on you (`⏸ shop › API work: waiting on you — a question`); the
+  band's counter counts them, and the sessions panel opens by itself as for this project. What already waited when a project is first
+  seen is not announced.
+- While it is on, each project with an open session writes one small file to `~/.claude/session-progress/projects/` (or under
+  `$CLAUDE_CONFIG_DIR`): its path, packages folder, accepted schema names and last-seen time. Other sessions read it, then that project's
+  records and the package files its open sessions are bound to, every 5 s (a file whose time did not move is not read again). Stale
+  project files are skipped unread. Off, nothing is written or read outside the project.
+- README (en/tr) and PRIVACY: how to turn it on and off, and what it reads and writes.
+
 ## 0.4.1 — 2026-10-12
 
 - **A permission prompt is seen through Claude Code's own notice of it** (`classic.Notification`, `permission_prompt`), no longer through

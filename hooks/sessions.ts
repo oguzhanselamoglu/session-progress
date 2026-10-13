@@ -10,6 +10,53 @@ export const DEFAULT_PACKAGES_DIR = '.progress'
 export const sessionsDir = (mainRoot: string): string => `${mainRoot}/.git/session-progress/sessions`
 
 /**
+ * Other projects (only while the person has them on, `/sessions all`): one small file per project with an open session, under the
+ * person's Claude Code configuration folder — the only place the plugin writes outside a repository.
+ */
+export const projectsDir = (configDir: string): string => `${configDir}/session-progress/projects`
+
+/** A project file's name: the folder's name (readable) and a short hash of the whole path (two `api` folders never share a file). */
+export function projectFileName(root: string): string {
+  const path = normPath(root).replace(/\/+$/, '')
+  let h = 0x811c9dc5
+  for (let i = 0; i < path.length; i++) {
+    h ^= path.charCodeAt(i)
+    h = Math.imul(h, 0x01000193) >>> 0
+  }
+  const base = (path.split('/').pop() || 'root').replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 40)
+  return `${base}-${h.toString(16).padStart(8, '0')}.json`
+}
+
+/**
+ * `session-progress-project-v1` — a project that has an open session: where it is, its packages folder and the schema names it
+ * accepts (so its package files read as they do there), nothing else.
+ */
+export type ProjectEntry = { schema: 'session-progress-project-v1'; root: string; packagesDir: string; schemaAliases: string[]; lastSeen: string }
+
+export const projectEntry = (root: string, packagesDir: string, lastSeen: string, schemaAliases: readonly string[] = []): ProjectEntry => ({
+  schema: 'session-progress-project-v1',
+  root,
+  packagesDir,
+  schemaAliases: [...schemaAliases],
+  lastSeen,
+})
+
+/** Validates a project file; a broken one, or one whose packages folder leaves the project, is `null`. */
+export function parseProject(text: string): ProjectEntry | null {
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (!isObj(raw) || raw.schema !== 'session-progress-project-v1') return null
+  if (typeof raw.root !== 'string' || !raw.root || typeof raw.packagesDir !== 'string' || !raw.packagesDir || !isTime(raw.lastSeen)) return null
+  if (raw.packagesDir.startsWith('/') || raw.packagesDir.split('/').includes('..')) return null
+  const aliases = Array.isArray(raw.schemaAliases) ? raw.schemaAliases.filter((x): x is string => typeof x === 'string' && x.length > 0) : []
+  return projectEntry(normPath(raw.root).replace(/\/+$/, ''), raw.packagesDir, raw.lastSeen, aliases)
+}
+
+/**
  * The folder name paths are matched on: the LAST segment of the packages folder (`docs/work-packages` → `work-packages`), so a
  * path written relative to any folder (`cd docs && … work-packages/x/progress.json`) still names its package.
  */

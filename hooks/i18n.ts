@@ -47,6 +47,8 @@ export type Dict = {
     waiting: (pkg: string, what: string) => string
     /** Another session started waiting on the person (`where`: its name and checkout). */
     elsewhere: (where: string, what: string) => string
+    /** A session in ANOTHER project started waiting on the person (shown only with other projects turned on). */
+    elsewhereProject: (project: string, label: string, what: string) => string
   }
   /** A dialog open on the person in a session (from its record). */
   /** `permissionAny`: a permission prompt whose tool the notice did not name. */
@@ -65,6 +67,12 @@ export type Dict = {
     progressDescription: string
     progressHint: string
     sessionsDescription: string
+    sessionsHint: string
+    /** Other projects turned on (`dir`: where the project files go) / off / could not be stored / no configuration folder. */
+    scopeAll: (dir: string) => string
+    scopeThis: string
+    scopeFailed: (why: string) => string
+    scopeUnavailable: string
     noRecord: string
     bindUsage: string
     bound: (pkg: string) => string
@@ -153,6 +161,12 @@ export type Dict = {
     closed: (n: number) => string
     read: (at: string) => string
     hint: string
+    /** Other projects: section title, what waits on the person there (above, so it is seen first), the switch's state. */
+    otherProjects: (n: number) => string
+    otherWaiting: (n: number) => string
+    noOtherProjects: string
+    scopeOn: string
+    scopeOff: string
   }
 }
 
@@ -201,6 +215,7 @@ const en: Dict = {
     phaseDone: (pkg, phase) => `✓ ${pkg}: ${phase} done`,
     waiting: (pkg, what) => `⏸ ${pkg}: waiting on you — ${what}`,
     elsewhere: (where, what) => `⏸ ${where}: waiting on you — ${what}`,
+    elsewhereProject: (project, label, what) => `⏸ ${project} › ${label}: waiting on you — ${what}`,
   },
   dec: { permission: (tool) => `permission: ${tool}`, permissionAny: 'a permission', question: 'a question', plan: 'plan approval' },
   a: { label: 'Subagents', running: (n) => `${n} running`, done: (n) => `${n} done`, failed: (n) => `${n} failed` },
@@ -213,7 +228,13 @@ const en: Dict = {
   c: {
     progressDescription: "This session's work package progress. Sub-commands: init · refresh · bind <package> · unbind · name <session name> · language en|tr",
     progressHint: '[init | refresh | bind <package> | unbind | name <name> | language en|tr]',
-    sessionsDescription: 'Work package progress of every open session, one by one (again: closes the panel).',
+    sessionsDescription: 'Work package progress of every open session, one by one (again: closes the panel). all: other projects too · this: this project only',
+    sessionsHint: '[all | this]',
+    scopeAll: (dir) =>
+      `Other projects are on, in all your sessions: their open sessions and packages show in /sessions, and you get a notification when one waits on you. Each project with an open session leaves one small file in ${dir}. Turn it off with /sessions this.`,
+    scopeThis: 'Other projects are off: /sessions shows this project only, and nothing is written outside it. Turn them on with /sessions all.',
+    scopeFailed: (why) => `The choice could not be saved: ${why}`,
+    scopeUnavailable: 'Your Claude Code configuration folder could not be found (no HOME), so other projects cannot be shown.',
     noRecord: 'The session record could not be set up; binding and naming do not work in this session (the band and the panel do).',
     bindUsage: 'Usage: /progress bind <package>',
     bound: (pkg) => `This session is bound to "${pkg}".`,
@@ -295,6 +316,11 @@ const en: Dict = {
     closed: (n) => `${n} closed sessions hidden  ·  `,
     read: (at) => `Read ${at}`,
     hint: '/progress bind <package>  ·  /progress name <name>',
+    otherProjects: (n) => `Other projects · ${n}`,
+    otherWaiting: (n) => `⏸ ${n} waiting on you in other projects (below)`,
+    noOtherProjects: 'No open sessions in other projects.',
+    scopeOn: 'Other projects: on  ·  /sessions this turns them off',
+    scopeOff: 'Other projects: off  ·  /sessions all shows them',
   },
 }
 
@@ -343,6 +369,7 @@ const tr: Dict = {
     phaseDone: (pkg, phase) => `✓ ${pkg}: ${phase} tamamlandı`,
     waiting: (pkg, what) => `⏸ ${pkg}: sende bekliyor — ${what}`,
     elsewhere: (where, what) => `⏸ ${where}: sende bekliyor — ${what}`,
+    elsewhereProject: (project, label, what) => `⏸ ${project} › ${label}: sende bekliyor — ${what}`,
   },
   dec: { permission: (tool) => `izin: ${tool}`, permissionAny: 'izin', question: 'soru', plan: 'plan onayı' },
   a: { label: 'Alt ajanlar', running: (n) => `${n} çalışıyor`, done: (n) => `${n} bitti`, failed: (n) => `${n} hatalı` },
@@ -355,7 +382,13 @@ const tr: Dict = {
   c: {
     progressDescription: 'Bu oturumun iş paketi ilerlemesi. Alt komutlar: kur · yenile · bağla <paket> · çöz · ad <oturum adı> · dil en|tr',
     progressHint: '[kur | yenile | bağla <paket> | çöz | ad <ad> | dil en|tr]',
-    sessionsDescription: 'Açık oturumların iş paketi ilerlemesi, ayrı ayrı (tekrar yazınca panel kapanır).',
+    sessionsDescription: 'Açık oturumların iş paketi ilerlemesi, ayrı ayrı (tekrar yazınca panel kapanır). tümü: diğer projeler de · bu: yalnız bu proje',
+    sessionsHint: '[tümü | bu]',
+    scopeAll: (dir) =>
+      `Diğer projeler açık, tüm oturumlarında: açık oturumları ve paketleri /oturumlar panelinde görünür, biri sende beklemeye başlayınca bildirim gelir. Açık oturumu olan her proje ${dir} içine küçük bir dosya bırakır. Kapatmak için: /oturumlar bu`,
+    scopeThis: 'Diğer projeler kapalı: /oturumlar yalnız bu projeyi gösterir, proje dışına hiçbir şey yazılmaz. Açmak için: /oturumlar tümü',
+    scopeFailed: (why) => `Seçim kaydedilemedi: ${why}`,
+    scopeUnavailable: 'Claude Code yapılandırma klasörün bulunamadı (HOME yok); diğer projeler gösterilemiyor.',
     noRecord: 'Oturum kaydı kurulamadı; bağlama ve oturum adı bu oturumda çalışmıyor (şerit ve /ilerleme çalışır).',
     bindUsage: 'Kullanım: /ilerleme bağla <paket>',
     bound: (pkg) => `Bu oturum "${pkg}" paketine bağlandı.`,
@@ -437,6 +470,11 @@ const tr: Dict = {
     closed: (n) => `${n} kapalı oturum gizli  ·  `,
     read: (at) => `Okundu ${at}`,
     hint: '/ilerleme bağla <paket>  ·  /ilerleme ad <ad>',
+    otherProjects: (n) => `Diğer projeler · ${n}`,
+    otherWaiting: (n) => `⏸ diğer projelerde ${n} iş sende bekliyor (aşağıda)`,
+    noOtherProjects: 'Diğer projelerde açık oturum yok.',
+    scopeOn: 'Diğer projeler: açık  ·  kapatmak için /oturumlar bu',
+    scopeOff: 'Diğer projeler: kapalı  ·  göstermek için /oturumlar tümü',
   },
 }
 
@@ -461,6 +499,16 @@ export const SUB_ALIASES: Record<string, 'refresh' | 'bind' | 'unbind' | 'name' 
   coz: 'unbind',
   name: 'name',
   ad: 'name',
+}
+
+/** Arguments of the sessions command in every language: other projects too, or this project only. */
+export const SCOPE_ALIASES: Record<string, 'all' | 'this'> = {
+  all: 'all',
+  tümü: 'all',
+  tumu: 'all',
+  this: 'this',
+  here: 'this',
+  bu: 'this',
 }
 
 export const LANGS: readonly Lang[] = ['en', 'tr']

@@ -22,6 +22,9 @@ A Claude Code plugin that shows how your work is going, **per session**:
   waiting on you: a permission prompt, a question or a plan to approve opens there, or its package's decision moves to you.
 - **Open dialogs count as waiting:** a session showing a permission prompt, a question or a plan to approve is listed as waiting on you
   in `/sessions` and in the band's counter, even when it is bound to no package.
+- **Other projects (off by default):** turn them on with `/sessions all` and `/sessions` also shows your open sessions in other
+  projects, with their packages' progress, and a toast tells you when one of them starts waiting on you. See
+  [Sessions in other projects](#sessions-in-other-projects).
 
 It is built for running several sessions at once (worktrees, parallel features, agents) and seeing at a glance which one needs you.
 
@@ -108,7 +111,40 @@ line for you to add. It takes effect from the next session.
 - Name each session so the cards are easy to tell apart: `/progress name API work`.
 - Open `/sessions` in any of them: sessions waiting on you come first, with what they wait for (a package's decision, a permission
   prompt, a question or a plan to approve). When another session starts waiting on you, a toast tells you here too.
-- Sessions in different worktrees of one repository see each other; separate repositories do not.
+- Sessions in different worktrees of one repository see each other. Sessions in other repositories show up only when you turn on
+  other projects (next section).
+
+### Sessions in other projects
+
+**Off by default.** `/sessions` shows the sessions of the repository you are in. To follow your sessions in other projects too, turn
+other projects on, from any session:
+
+```
+/sessions all      # on   (Türkçe: /oturumlar tümü)
+/sessions this     # off  (Türkçe: /oturumlar bu)
+```
+
+The choice is yours, not the project's: it is kept in the plugin's store and applies to all your sessions (the ones already open pick it
+up within 30 seconds). Typing either language's word works.
+
+While it is on:
+
+- `/sessions` lists, below this project's sessions, an **Other projects** section: each project with open sessions, and each session as
+  the same card as here (status, the dialog waiting on you, the bound package with its progress bar, phases, what runs now and what is
+  next, subagents, branch). Projects with something waiting on you come first, and a line at the top of the panel tells you so.
+- When a session in another project starts waiting on you (a permission prompt, a question, a plan to approve, or its package's
+  decision), you get a toast naming the project and the session: `⏸ shop › API work: waiting on you — a question`. The band's
+  "waiting on you in other sessions" counter counts them too, and the sessions panel opens by itself as it does for this project.
+- To be seen by the others, each project that has an open session writes one small file under your Claude Code configuration folder:
+  `~/.claude/session-progress/projects/<folder>-<hash>.json` (in `$CLAUDE_CONFIG_DIR` when you set one). It holds the project's path,
+  its packages folder, its accepted schema names and the time it was last seen — nothing else. A project whose sessions are all closed
+  stops being shown after a few minutes.
+
+The panel's last line always says whether other projects are on and how to switch. Turning them off stops all writing outside the
+project at once (in the other open sessions, at their next heartbeat). The project files that are left are ignored once they are a few
+minutes old, and you can delete `~/.claude/session-progress/` at any time.
+
+Only projects that use the plugin (they have a packages folder) take part, and only sessions running a version with this feature.
 
 ### Tips
 
@@ -130,7 +166,8 @@ never tracked. The sessions panel is built from these records. A record is refre
 or closes, when a subagent starts or ends, and every 30 s. Other sessions' records are read every 5 s (a record whose file did not change
 is not read again), so a dialog in one session reaches the others within seconds. A session silent for 3 minutes, or one that ended,
 counts as closed. Records are only written in repositories that have a
-packages folder, so other projects stay untouched.
+packages folder, so other projects stay untouched. With other projects on (`/sessions all`, off by default), each such project also
+leaves one small file under your Claude Code configuration folder, and each session reads the other projects' records the same way.
 
 ### What it reads and writes
 
@@ -144,6 +181,9 @@ Everything stays on your machine: the plugin makes no network requests and reads
 | reads | the checkout's git `HEAD` | its branch, shown on the session's card |
 | writes | `.git/session-progress/sessions/<session id>.json` | one small record per session: name, checkout, bound package, last signal, branch, whether it is a worktree, the kind of dialog open on you with the tool's name (`permission: Bash`; never the command or the tool's input), and its subagents' short task labels and states (never their prompts). Git ignores unknown folders inside `.git`; nothing is committed. Written only in repositories that have a packages folder. |
 | writes | `<packagesDir>/README.md` | only when you run `/progress init`, and never over an existing folder |
+| reads | `~/.claude/session-progress/projects/*.json`, then each listed project's `.git/session-progress/sessions/*.json` and the `progress.json` its open sessions are bound to | only while other projects are on (`/sessions all`): the sessions and packages of your other projects |
+| reads | the `CLAUDE_CONFIG_DIR`, `HOME` and `USERPROFILE` environment variables | to find your Claude Code configuration folder |
+| writes | `~/.claude/session-progress/projects/<folder>-<hash>.json` | only while other projects are on: the project's path, its packages folder, its accepted schema names and when it was last seen, so your sessions in other projects can find it |
 | writes | `CLAUDE.md` or `.claude/CLAUDE.md` | only when you run `/progress init`, the file already exists and you say yes when asked: one line is appended (see [Using it](#using-it)); a file that mentions session-progress is left as it is |
 
 Of these, only `CLAUDE.md` is a file Claude follows as instructions, and the plugin adds to it only on your yes. The session records under
@@ -159,7 +199,7 @@ Agent and `classic.SubagentStop` only **watch** when a subagent starts and ends;
 `classic.PostToolUse` checks a `progress.json` the call just **wrote** (never one it only read): if it does not match the schema, it adds
 one line for Claude naming the file and the first problem, so the writer fixes it in the same turn; the tool's result is never changed. `ui.render`
 draws the band and the two panels. The plugin registers two commands (`/progress`, `/sessions`;
-in Turkish `/ilerleme`, `/oturumlar`) and keeps your language choice in its own store.
+in Turkish `/ilerleme`, `/oturumlar`) and keeps your language and other-projects choices in its own store.
 
 ### `progress.json`
 
@@ -215,8 +255,8 @@ The band, both panels and the command names switch at once in the current sessio
 
 | Language | Commands | Sub-commands |
 |---|---|---|
-| English | `/progress`, `/sessions` | `init` · `refresh` · `bind <package>` · `unbind` · `name <name>` · `language en\|tr` |
-| Türkçe | `/ilerleme`, `/oturumlar` | `kur` · `yenile` · `bağla <paket>` · `çöz` · `ad <ad>` · `dil en\|tr` |
+| English | `/progress`, `/sessions` | `/progress`: `init` · `refresh` · `bind <package>` · `unbind` · `name <name>` · `language en\|tr` — `/sessions`: `all` · `this` |
+| Türkçe | `/ilerleme`, `/oturumlar` | `/ilerleme`: `kur` · `yenile` · `bağla <paket>` · `çöz` · `ad <ad>` · `dil en\|tr` — `/oturumlar`: `tümü` · `bu` |
 
 Sub-commands are understood in both languages, so typing the other language's word still works. What Claude writes into
 `progress.json` (titles, notes) follows the language you talk to it in.

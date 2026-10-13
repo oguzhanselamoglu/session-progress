@@ -14,7 +14,11 @@ It runs inside Claude Code on your machine and only reads and writes files there
   file already mentions it. It never creates that file.
 - When Claude itself writes a `progress.json` that does not match the schema, it adds one line to Claude's context naming that file
   and the problem, so Claude fixes it. Nothing else is added to the conversation.
-- It keeps your language choice in the plugin's own local store in your Claude Code configuration folder.
+- **Only if you turn on other projects** (`/sessions all`; off by default): each project with an open session writes one small file to
+  `session-progress/projects/` in your Claude Code configuration folder (its path, its packages folder, its accepted schema names and
+  when it was last seen), and your sessions read those files, the other projects' session records and the package files their sessions
+  are bound to. `/sessions this` turns it off; the folder can be deleted at any time.
+- It keeps your language and other-projects choices in the plugin's own local store in your Claude Code configuration folder.
 
 No data leaves your machine, and no credentials are read.
 
@@ -26,4 +30,8 @@ soru ya da plan onayı varsa yalnız türü ve aracın adı; komut ya da aracın
 zaman silebilirsin). `/ilerleme kur` çalıştırınca, projede zaten bir
 `CLAUDE.md` (ya da `.claude/CLAUDE.md`) varsa ve session-progress'ten söz etmiyorsa sonuna tek bir satır eklemeyi önerir; satırı
 olduğu gibi gösterir ve yalnızca "evet" dersen ekler; bu dosyayı asla oluşturmaz. Claude'un yazdığı bir `progress.json` şemaya uymazsa,
-Claude'un bağlamına dosyayı ve sorunu söyleyen tek bir satır ekler; konuşmaya başka hiçbir şey eklemez. Dil seçimin, Claude Code yapılandırma klasöründeki eklentiye ait yerel depoda tutulur. Hiçbir kimlik bilgisi okunmaz.
+Claude'un bağlamına dosyayı ve sorunu söyleyen tek bir satır ekler; konuşmaya başka hiçbir şey eklemez. **Yalnız diğer projeleri açarsan**
+(`/oturumlar tümü`; varsayılan kapalı) açık oturumu olan her proje Claude Code yapılandırma klasöründeki `session-progress/projects/`
+altına küçük bir dosya yazar (projenin yolu, paket klasörü, kabul ettiği şema adları, en son görülme zamanı); oturumların bu dosyaları,
+diğer projelerin oturum kayıtlarını ve oturumlarının bağlı olduğu paket dosyalarını okur. `/oturumlar bu` kapatır; klasörü istediğin
+zaman silebilirsin. Dil ve diğer projeler seçimin, Claude Code yapılandırma klasöründeki eklentiye ait yerel depoda tutulur. Hiçbir kimlik bilgisi okunmaz.

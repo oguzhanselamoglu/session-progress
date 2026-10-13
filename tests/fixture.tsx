@@ -4,6 +4,9 @@ import type { Engine } from 'claude-code/testing'
 import type { ProgressDoc, SessionRecord } from '../types'
 
 export const NOW = Date.parse('2026-10-08T15:00:00Z')
+/** The home folder tests run with; the plugin's projects folder (other projects) is under its `.claude`. */
+export const HOME = '/home/u'
+export const PROJECTS_DIR = `${HOME}/.claude/session-progress/projects`
 export const pkg = (root: string, name: string): string => `${root}/docs/packages/${name}/progress.json`
 export const sessionFile = (id: string, root = '/repo'): string => `${root}/.git/session-progress/sessions/${id}.json`
 /** The project settings most tests run with: packages under `docs/packages`. */
@@ -92,6 +95,8 @@ export function fakeRepo(
     answer?: (question: string, labels: string[]) => string | null
     /** Questions put to the person through the dialog, collected. */
     asked?: string[]
+    /** Environment variables `$.env.get` answers (default: a home folder, `/home/u`). */
+    env?: Record<string, string>
   } = {},
 ): FakeRepo {
   if (!opts.bare) files['/repo/docs/packages/README.md'] ??= '# packages'
@@ -121,6 +126,8 @@ export function fakeRepo(
     store[e.key] = e.value
     return { value: undefined } as never
   })
+  const env = opts.env ?? { HOME: HOME }
+  on('env.get', ($, e) => ({ value: env[e.name] }) as never)
   on('session.cwd', () => ({ value: '/repo' }) as never)
   // sessionId: null → the engine cannot give a session id (robustness test)
   if (sid !== null) on('session.id', () => ({ value: opts.idRef?.id ?? sid }) as never)
