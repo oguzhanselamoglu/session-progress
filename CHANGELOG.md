@@ -17,6 +17,11 @@
   project files are skipped unread. Off, nothing is written or read outside the project.
 - README (en/tr) and PRIVACY: how to turn it on and off, and what it reads and writes.
 
+**Fix:** after `/resume` (or `/clear`) in a running Claude Code the session lost its record: Claude Code keeps a plugin's session state
+per session and starts no new session for the plugin, so the band said "not bound" for good, writing a package file bound nothing and the
+sessions panel showed the resumed session as idle. The record of the session now running is set up again on the next write (a heartbeat,
+a turn, a tool call or a `/progress` command), continuing that session's own record and binding.
+
 ## 0.4.1 — 2026-10-12
 
 - **A permission prompt is seen through Claude Code's own notice of it** (`classic.Notification`, `permission_prompt`), no longer through

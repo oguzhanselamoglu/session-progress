@@ -707,12 +707,13 @@ function writeSelf($: Env, patch: (r: SessionRecord, nowIso: string) => SessionR
 
 async function writeSelfNow($: Env, patch: (r: SessionRecord, nowIso: string) => SessionRecord | null): Promise<void> {
   let cur = await read($, self)
-  if (!cur) return
   const nowIso = new Date(await $.clock.now()).toISOString()
   // `/clear` or `/resume` changes the session id without restarting the process (no `session.start`): the old record stays ended and
-  // a record is set up under the new id (continuing the resumed session's own record when it has one).
+  // a record is set up under the new id (continuing the resumed session's own record when it has one). The host keeps `$.state` per
+  // session, so after the switch `self` may read as never set: the new id's record is set up the same way.
   const id = await currentId($)
-  if (id && id !== cur.id) cur = { ...((await loadRecord($, id)) ?? newSession(id, await $.session.cwd(), nowIso, cwdRoot)), ended: false }
+  if (id && id !== cur?.id) cur = { ...((await loadRecord($, id)) ?? newSession(id, await $.session.cwd(), nowIso, cwdRoot)), ended: false }
+  if (!cur) return
   const next = patch(cur, nowIso)
   if (!next) return
   await update($, self, () => next)
@@ -816,7 +817,10 @@ async function runProgress($: Env, args: string): Promise<{ text: string }> {
   const arg = rest.join(' ').trim()
   const action = SUB_ALIASES[sub.toLocaleLowerCase('tr')] ?? SUB_ALIASES[sub.toLowerCase()]
   const c = t().c
-  if ((action === 'bind' || action === 'unbind' || action === 'name') && !(await read($, self))) return { text: c.noRecord }
+  const needsRecord = action === 'bind' || action === 'unbind' || action === 'name'
+  // After `/clear` or `/resume` the record is set up by the next write: a command can come before any.
+  if (needsRecord && !(await read($, self))) await writeSelf($, (r) => r)
+  if (needsRecord && !(await read($, self))) return { text: c.noRecord }
   if (action === 'bind') {
     if (!arg) return { text: c.bindUsage }
     await refresh($, true)

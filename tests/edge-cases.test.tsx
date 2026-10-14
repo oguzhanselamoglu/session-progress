@@ -213,3 +213,40 @@ test('agent pattern: a literal path inside a python heredoc binds', async ($, on
   await $.tool.call({ tool: 'Bash', command: `python3 - <<'EOF'\nimport json\np='${pkg('/repo', 'dark-mode')}'\nEOF` } as never)
   expect(repo.self()?.package).toBe('dark-mode')
 })
+
+test('after /resume (no session.start, the session\'s state starts empty) the resumed session\'s record is continued and a write binds', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const files: Record<string, string> = { [sessionFile('old-1')]: JSON.stringify(session({ id: 'old-1', label: 'Earlier work' })) }
+  const idRef = { id: 'self-1' }
+  const repo = fakeRepo(on, files, { idRef })
+  // The host keeps `$.state` per session: after the switch the plugin's value reads as never set, until the plugin sets it again.
+  let wiped = false
+  on('state.get', async ($, e, next) => {
+    const read = (await next(e)) as unknown as { value: { value: unknown; version: number } }
+    return (wiped && e.plugin === 'session-progress' && e.key === 'self' ? { value: { value: undefined, version: read.value.version } } : read) as never
+  })
+  on('state.set', async ($, e, next) => {
+    if (e.plugin === 'session-progress' && e.key === 'self') wiped = false
+    return next(e)
+  })
+  await start($)
+  await $.session.end({ reason: 'resume', sessionId: 'self-1', resume: { id: 'self-1' } } as never)
+  idRef.id = 'old-1'
+  wiped = true
+  await writeProgress($, files, pkg('/repo', 'api-v2-migration'), mine())
+  const resumed = JSON.parse(files[sessionFile('old-1')] ?? 'null') as { ended: boolean; package: string | null; label: string | null } | null
+  expect(resumed).toMatchObject({ ended: false, package: 'api-v2-migration', label: 'Earlier work' })
+  expect(JSON.parse(files[sessionFile('self-1')] ?? '{}').ended, 'the session left stays ended').toBe(true)
+  const band = await $.ui.mount({ ...BAND, surface: 'terminal' } as never)
+  expect(await band.find({ type: 'Text', text: /API v2 migration/ })).toBeDefined()
+  await band.unmount()
+  await clock.advance(31_000)
+  expect(repo.self(), 'the left session\'s file is not the one kept alive').toMatchObject({ ended: true })
+  // A command right after the switch, before any write, still finds a record.
+  await $.session.end({ reason: 'resume', sessionId: 'old-1', resume: { id: 'old-1' } } as never)
+  idRef.id = 'self-1'
+  wiped = true
+  const res = (await $.command.run({ command: 'progress', args: 'bind api-v2-migration' } as never)) as { text?: string }
+  expect(res.text).not.toMatch(/could not be set up/)
+  expect(repo.self()).toMatchObject({ ended: false, package: 'api-v2-migration', bindSource: 'manual' })
+})
