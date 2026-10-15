@@ -6,6 +6,7 @@ import { DICTS, LANGS, SCOPE_ALIASES, SUB_ALIASES, resolveLang, type Dict, type 
 import {
   STATUS_VIEW,
   auditLine,
+  auditNote,
   bar,
   branchFromHead,
   currentPhase,
@@ -453,7 +454,7 @@ async function readForeign($: Env, now: number, cached: boolean): Promise<string
         parts.push(`${path}@${mtimeMs}`)
         const r = await get(path, mtimeMs, (text): PackageRead => {
           const parsed = parseDoc(text, t(), project.schemaAliases)
-          return 'doc' in parsed ? { ok: true, path, root, doc: parsed.doc } : { ok: false, path, root, error: parsed.error }
+          return 'doc' in parsed ? { ok: true, path, root, doc: parsed.doc, warning: parsed.warning } : { ok: false, path, root, error: parsed.error }
         })
         if (r && packageFromPath(r.path, segmentThere)) reads.push(r)
       }
@@ -533,7 +534,7 @@ async function readAll($: Env, scanError: string | null): Promise<void> {
     try {
       const text = await $.fs.read(path)
       const parsed = parseDoc(typeof text === 'string' ? text : '', t(), schemaAliases)
-      reads.push('doc' in parsed ? { ok: true, path, root, doc: parsed.doc } : { ok: false, path, root, error: parsed.error })
+      reads.push('doc' in parsed ? { ok: true, path, root, doc: parsed.doc, warning: parsed.warning } : { ok: false, path, root, error: parsed.error })
     } catch (e) {
       reads.push({ ok: false, path, root, error: t().v.unreadable((e as Error).message) })
     }
@@ -618,14 +619,17 @@ async function schemaNotes($: Env, tool: string, input: unknown, toolUseId: stri
   const notes: string[] = []
   for (const path of await writtenPackageFiles($, tool, input, toolUseId)) {
     let error: string | null
+    let warning: string | null = null
     try {
       const text = await $.fs.read(path)
       const parsed = parseDoc(typeof text === 'string' ? text : '', DICTS.en, schemaAliases)
       error = 'error' in parsed ? parsed.error : null
+      if ('doc' in parsed) warning = parsed.warning ?? null
     } catch (err) {
       error = DICTS.en.v.unreadable((err as Error).message)
     }
     if (error) notes.push(schemaNote(path, error))
+    else if (warning) notes.push(auditNote(path, warning))
   }
   return notes
 }
@@ -1268,7 +1272,7 @@ export const register: Register = (on) => {
     if (!snap) return <Text dimColor>{d.p.reading}</Text>
     const me = await read($, self)
     const now = await $.clock.now()
-    const { active, completed, errors } = organize(snap.reads)
+    const { active, completed, errors, warnings } = organize(snap.reads)
     const mine = boundRead(snap.reads, me?.package ?? null, segment)
     const focus = (mine && active.find((r) => packageKey(r, segment) === packageKey(mine, segment))) ?? focusOf(active, snap.cwdRoot)
     const others = active.filter((r) => r !== focus)
@@ -1366,7 +1370,11 @@ export const register: Register = (on) => {
     // Errors at the TOP (visible in a short window too); the list is never cut — the engine scrolls the pane body.
     const errorRows = []
     if (snap.error) errorRows.push(<Text key="se" color="error">⚠ {snap.error}</Text>)
-    for (const r of errors) errorRows.push(<Text key={`e-${r.path}`} color="error">⚠ {r.path}: {r.error}</Text>)
+    for (const r of errors) {
+      errorRows.push(<Text key={`e-${r.path}`} color="error">⚠ {r.path}: {r.error}{r.elsewhere ? d.p.elsewhereToo(r.elsewhere) : ''}</Text>)
+    }
+    // Review rounds left out: the package shows, so a dim line is enough.
+    for (const r of warnings) errorRows.push(<Text key={`w-${r.path}`} dimColor>⚠ {r.doc.title}: {d.p.auditsLeftOut(r.warning ?? '')}</Text>)
     if (errorRows.length) errorRows.push(<Text key="sp5"> </Text>)
 
     out.push(<Text key="sp6"> </Text>, <Text key="f" dimColor>{d.p.footer(shortDate(new Date(snap.readAt).toISOString()))}</Text>)

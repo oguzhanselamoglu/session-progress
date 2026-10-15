@@ -95,8 +95,10 @@ bir bildirim neyin beklediğini söyler ve oturum diğer oturumlardaki `/oturuml
 
 ### Dosya şemaya uymazsa
 
-`progress.json`'u şemaya uymayan paket, ilerlemesi yerine bir hata satırıyla görünür. Claude böyle bir dosya yazınca eklenti ona hemen
-söyler (dosyayı ve ilk sorunu); Claude dosyayı aynı turda düzeltir.
+`progress.json`'u şemaya uymayan paket, ilerlemesi yerine bir hata satırıyla görünür; birden çok çalışma kopyasında (worktree) bozuk olan
+aynı dosya tek satırdır. Denetim turları (`audits`) istisnadır: uymayan tur dışarıda bırakılır, paket yine görünür ve hangi turun
+gösterilmediğini soluk bir satır söyler. Claude böyle bir dosya yazınca eklenti ona hemen söyler (dosyayı ve ilk sorunu); Claude dosyayı
+aynı turda düzeltir.
 
 ### Bir projede otomatik yap
 

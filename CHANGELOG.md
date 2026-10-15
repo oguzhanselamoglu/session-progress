@@ -17,6 +17,11 @@
   project files are skipped unread. Off, nothing is written or read outside the project.
 - README (en/tr) and PRIVACY: how to turn it on and off, and what it reads and writes.
 
+**Review rounds that do not match no longer hide the package.** `audits` only decorates the progress panel: a round missing `round`,
+`by` or `verdict` (or with a wrong optional field) is left out, the package shows with its bar and phases, and one dim line names the
+first problem instead of a red error. Claude still gets a note to fix the file when it writes it. The same error in the same file of
+several checkouts (a package carried into a worktree) is one line, saying in how many other checkouts it is too.
+
 **Fix:** after `/resume` (or `/clear`) in a running Claude Code the session lost its record: Claude Code keeps a plugin's session state
 per session and starts no new session for the plugin, so the band said "not bound" for good, writing a package file bound nothing and the
 sessions panel showed the resumed session as idle. The record of the session now running is set up again on the next write (a heartbeat,

@@ -131,6 +131,10 @@ export type Dict = {
     waiting: (who: string, what: string) => string
     stale: (ago: string) => string
     audits: string
+    /** Review rounds of a package that did not match the schema and are not shown (`why`: the first problem). */
+    auditsLeftOut: (why: string) => string
+    /** The same error in the same file of `n` other checkouts (worktrees). */
+    elsewhereToo: (n: number) => string
     none: string
     others: string
     completed: string
@@ -288,6 +292,8 @@ const en: Dict = {
     waiting: (who, what) => `⧗ Waiting on: ${who} — ${what}`,
     stale: (ago) => `⚠ Last update ${ago} — the phase may be stale`,
     audits: 'Review rounds',
+    auditsLeftOut: (why) => `some review rounds are not shown (${why})`,
+    elsewhereToo: (n) => `  (and in ${n} more ${n === 1 ? 'checkout' : 'checkouts'})`,
     none: 'No active package.',
     others: 'Other active packages',
     completed: 'Completed',
@@ -442,6 +448,8 @@ const tr: Dict = {
     waiting: (who, what) => `⧗ Bekleniyor: ${who} — ${what}`,
     stale: (ago) => `⚠ Son güncelleme ${ago} — aşama bayat olabilir`,
     audits: 'Denetim turları',
+    auditsLeftOut: (why) => `bazı denetim turları gösterilmiyor (${why})`,
+    elsewhereToo: (n) => `  (${n} çalışma kopyasında daha)`,
     none: 'Aktif paket yok.',
     others: 'Diğer aktif paketler',
     completed: 'Tamamlananlar',

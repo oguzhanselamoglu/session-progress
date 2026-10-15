@@ -94,7 +94,8 @@ conversation, and so on): the person reads them in the band and the panels. Keep
 | `audits` | Review rounds: `round` (number), `by`, `verdict` (words like PASS / CLEAN / FAIL / WARN colour it), optional `findings`, `closedBy` (list), `at`. |
 | `branch`, `worktree` | Optional, shown in the panel. |
 
-A file that does not match is shown as an error with the path of the first problem. Fix it rather than leaving it.
+A file that does not match is shown as an error with the path of the first problem. Fix it rather than leaving it. A review round
+that does not match is only left out of the panel (the package still shows): fix it too.
 
 ## Commands the user has
 

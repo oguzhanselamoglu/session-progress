@@ -89,8 +89,10 @@ An item like *"bring it to me for approval"* becomes a phase waiting on you. Whe
 
 ### When a file does not match
 
-A package whose `progress.json` does not match the schema is shown as an error line instead of its progress. When Claude writes such a
-file, the plugin tells it right away (the file and the first problem), so it fixes the file in the same turn.
+A package whose `progress.json` does not match the schema is shown as an error line instead of its progress; the same file broken in
+several checkouts (worktrees) is one line. Review rounds (`audits`) are the exception: a round that does not match is left out and the
+package still shows, with a dim line saying which round. When Claude writes such a file, the plugin tells it right away (the file and
+the first problem), so it fixes the file in the same turn.
 
 ### Make it automatic in a project
 

@@ -39,9 +39,10 @@ test('fields that deviate from the type file are rejected by the schema (with th
   expect(bad({ metrics: 'xy' })).toMatch(/phases\[0\]\.metrics/)
   expect(bad({ metrics: { a: { b: 1 } } })).toMatch(/phases\[0\]\.metrics/)
   expect(bad({ note: {} })).toMatch(/phases\[0\]\.note/)
+  // A review round that deviates is left out with a warning naming it (the package itself is still read).
   const audit = (a: Record<string, unknown>): string => {
     const r = parseDoc(JSON.stringify({ ...doc(), audits: [{ round: 1, by: 'reviewer', verdict: 'APPROVED', ...a }] }))
-    return 'error' in r ? r.error : ''
+    return 'doc' in r && r.doc.audits?.length === 0 ? (r.warning ?? '') : ''
   }
   expect(audit({ closedBy: 'abc' })).toMatch(/audits\[0\]\.closedBy/)
   expect(audit({ findings: 3 })).toMatch(/audits\[0\]\.findings/)

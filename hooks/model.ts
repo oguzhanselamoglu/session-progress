@@ -17,7 +17,10 @@ const isStrArray = (v: unknown): v is string[] => Array.isArray(v) && v.every((x
 const isMetrics = (v: unknown): boolean =>
   isObj(v) && Object.values(v).every((x) => typeof x === 'string' || (typeof x === 'number' && Number.isFinite(x)))
 
-/** Validates a document: `null` when valid, otherwise a short description of the first error (with its path). */
+/**
+ * Validates a document: `null` when valid, otherwise a short description of the first error (with its path). Review rounds are not
+ * checked here: they only decorate the progress panel, so a round that does not match never hides the package (`auditsOf`).
+ */
 export function validate(raw: unknown, d: Dict = EN, aliases: readonly string[] = []): string | null {
   if (!isObj(raw)) return d.v.notObject
   if (raw.schema !== SCHEMA && !aliases.includes(raw.schema as string)) return d.v.schema(JSON.stringify(raw.schema))
@@ -41,16 +44,6 @@ export function validate(raw: unknown, d: Dict = EN, aliases: readonly string[] 
     if (p.refs !== undefined && !isStrArray(p.refs)) return d.v.refsList(at)
     if (p.metrics !== undefined && !isMetrics(p.metrics)) return d.v.metricsMap(at)
   }
-  if (raw.audits !== undefined) {
-    if (!Array.isArray(raw.audits)) return d.v.auditsList
-    for (let i = 0; i < raw.audits.length; i++) {
-      const a = raw.audits[i]
-      if (!isObj(a) || typeof a.round !== 'number' || !isStr(a.by) || !isStr(a.verdict)) return d.v.auditFields(i)
-      if (a.findings !== undefined && typeof a.findings !== 'string') return d.v.auditFindings(i)
-      if (a.closedBy !== undefined && !isStrArray(a.closedBy)) return d.v.auditClosedBy(i)
-      if (!isTime(a.at)) return d.v.auditAt(i)
-    }
-  }
   if (raw.waitingOn !== undefined && raw.waitingOn !== null) {
     const w = raw.waitingOn
     if (!isObj(w) || !isStr(w.who) || !isStr(w.what)) return d.v.waitingOn
@@ -65,8 +58,16 @@ export function validate(raw: unknown, d: Dict = EN, aliases: readonly string[] 
 export const schemaNote = (path: string, error: string): string =>
   `session-progress: ${path} does not match the ${SCHEMA} schema (${error}). The band and panels cannot show this package until it does: fix the file now (the session-progress skill lists the fields).`
 
-/** Parses and validates a text. */
-export function parseDoc(text: string, d: Dict = EN, aliases: readonly string[] = []): { doc: ProgressDoc } | { error: string } {
+/** The note when only review rounds do not match: the package shows, those rounds do not (always English, for the model). */
+export const auditNote = (path: string, warning: string): string =>
+  `session-progress: review rounds in ${path} do not match the ${SCHEMA} schema (${warning}). The package still shows, but those rounds are left out of the progress panel: fix them now (each needs round as a number, by and verdict; the session-progress skill lists the fields).`
+
+/** Parses and validates a text; `warning` names review rounds that were left out. */
+export function parseDoc(
+  text: string,
+  d: Dict = EN,
+  aliases: readonly string[] = [],
+): { doc: ProgressDoc; warning?: string } | { error: string } {
   let raw: unknown
   try {
     raw = JSON.parse(text)
@@ -74,7 +75,33 @@ export function parseDoc(text: string, d: Dict = EN, aliases: readonly string[] 
     return { error: d.v.json((e as Error).message) }
   }
   const error = validate(raw, d, aliases)
-  return error ? { error } : { doc: raw as ProgressDoc }
+  if (error) return { error }
+  const doc = raw as ProgressDoc & { audits?: unknown }
+  if (doc.audits === undefined) return { doc }
+  const { audits, warning } = auditsOf(doc.audits, d)
+  return warning ? { doc: { ...doc, audits }, warning } : { doc }
+}
+
+/** The first problem of one review round, `null` when it matches. */
+function auditProblem(a: unknown, i: number, d: Dict): string | null {
+  if (!isObj(a) || typeof a.round !== 'number' || !isStr(a.by) || !isStr(a.verdict)) return d.v.auditFields(i)
+  if (a.findings !== undefined && typeof a.findings !== 'string') return d.v.auditFindings(i)
+  if (a.closedBy !== undefined && !isStrArray(a.closedBy)) return d.v.auditClosedBy(i)
+  if (!isTime(a.at)) return d.v.auditAt(i)
+  return null
+}
+
+/** The review rounds that match, and the first problem of those that do not (they are left out; the package itself still shows). */
+export function auditsOf(raw: unknown, d: Dict = EN): { audits: Audit[]; warning: string | null } {
+  if (!Array.isArray(raw)) return { audits: [], warning: d.v.auditsList }
+  const audits: Audit[] = []
+  let warning: string | null = null
+  raw.forEach((a, i) => {
+    const problem = auditProblem(a, i, d)
+    if (problem) warning ??= problem
+    else audits.push(a as Audit)
+  })
+  return { audits, warning }
 }
 
 const FINISHED: ReadonlySet<PhaseStatus> = new Set(['done', 'skipped'])
@@ -179,18 +206,23 @@ export const auditLine = (a: Audit, t: Dict = EN): string =>
 
 /**
  * De-duplicates reads by package name (the same package in the main checkout and a worktree → the newest `updatedAt` wins), then
- * splits them: active (most recently updated first), completed, broken.
+ * splits them: active (most recently updated first), completed, broken, and the shown ones whose review rounds were left out. The same
+ * error in the same file of several checkouts is one entry (`elsewhere`: in how many other checkouts).
  */
 export function organize(reads: readonly PackageRead[]): {
   active: Extract<PackageRead, { ok: true }>[]
   completed: Extract<PackageRead, { ok: true }>[]
-  errors: Extract<PackageRead, { ok: false }>[]
+  errors: (Extract<PackageRead, { ok: false }> & { elsewhere: number })[]
+  warnings: Extract<PackageRead, { ok: true }>[]
 } {
   const byName = new Map<string, Extract<PackageRead, { ok: true }>>()
-  const errors: Extract<PackageRead, { ok: false }>[] = []
+  const errors = new Map<string, Extract<PackageRead, { ok: false }> & { elsewhere: number }>()
   for (const r of reads) {
     if (!r.ok) {
-      errors.push(r)
+      const key = `${r.path.startsWith(r.root) ? r.path.slice(r.root.length) : r.path}\0${r.error}`
+      const prev = errors.get(key)
+      if (prev) prev.elsewhere++
+      else errors.set(key, { ...r, elsewhere: 0 })
       continue
     }
     const prev = byName.get(r.doc.package)
@@ -200,7 +232,8 @@ export function organize(reads: readonly PackageRead[]): {
   return {
     active: all.filter((r) => !isComplete(r.doc)),
     completed: all.filter((r) => isComplete(r.doc)),
-    errors,
+    errors: [...errors.values()],
+    warnings: all.filter((r) => r.warning),
   }
 }
 

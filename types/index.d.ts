@@ -39,9 +39,12 @@ export type ProgressDoc = {
   waitingOn?: { who: Owner; what: string } | null;
 };
 
-/** A file that was read: a valid document or why it could not be read. `root` = the checkout it is in (main or a worktree). */
+/**
+ * A file that was read: a valid document or why it could not be read. `root` = the checkout it is in (main or a worktree). `warning`:
+ * review rounds that did not match and were left out of `doc` (the package still shows).
+ */
 export type PackageRead =
-  | { ok: true; path: string; root: string; doc: ProgressDoc }
+  | { ok: true; path: string; root: string; doc: ProgressDoc; warning?: string }
   | { ok: false; path: string; root: string; error: string };
 
 /** `<checkout>/.claude/session-progress.json` — per-project settings, committed with the project. Every field is optional. */
